@@ -109,12 +109,23 @@ New creates a new Keychain.
 ### Methods
 
 ```go
+func (kc T) DeleteSecureNote(service string) error
+```
+DeleteSecureNote deletes a secure note from the keychain.
+
+
+```go
+func (kc T) ReadFile(service string) ([]byte, error)
+```
+
+
+```go
 func (kc T) ReadFileCtx(_ context.Context, service string) ([]byte, error)
 ```
 
 
 ```go
-func (kc T) ReadSecureNote(service string) ([]byte, error)
+func (kc T) ReadSecureNote(service string) (data []byte, err error)
 ```
 ReadSecureNote reads a secure note from the keychain.
 
@@ -126,7 +137,12 @@ UpdateSecureNote updates an existing secure note in the keychain.
 
 
 ```go
-func (kc T) WriteFileCtx(_ context.Context, service string, data []byte) error
+func (kc T) WriteFile(service string, data []byte, _ fs.FileMode) error
+```
+
+
+```go
+func (kc T) WriteFileCtx(_ context.Context, service string, data []byte, _ fs.FileMode) error
 ```
 
 
@@ -146,7 +162,7 @@ type Type int
 Type represents the type of keychain to use.
 
 ### Constants
-### KeychainFileBased, KeychainDataProtectionLocal, KeychainICloud
+### KeychainFileBased, KeychainDataProtectionLocal, KeychainICloud, KeychainAll
 ```go
 // KeychainFileBased represents the file-based keychain.
 // This is the legacy, local only, file based keychain.
@@ -161,6 +177,10 @@ KeychainDataProtectionLocal
 // Applications that use must be signed and have appropriate
 // entitlements.
 KeychainICloud
+// KeychainAll represents any keychain type, it can only be used for
+// reading and indicates that all keychains will be searched for
+// the requested item.
+KeychainAll
 
 ```
 

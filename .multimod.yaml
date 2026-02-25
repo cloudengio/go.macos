@@ -1,5 +1,24 @@
-build: ["go", "build", "./..."]
-test: ["go", "test", "-failfast", "--covermode=atomic", "-race", "./..."]
+test:
+  [
+    "go",
+    "test",
+    "-failfast",
+    "--covermode=atomic",
+    "--vet=off",
+    "-race",
+    "./...",
+  ]
+test-less-parallelism:
+  [
+    "go",
+    "test",
+    "-failfast",
+    "--covermode=atomic",
+    "--vet=off",
+    "-race",
+    "-p=2",
+    "./...",
+  ]
 lint: ["golangci-lint", "run", "./..."]
 govuln: ["govulncheck", "./..."]
 generate: ["go", "generate", "./..."]
@@ -12,3 +31,6 @@ annotate:
   ]
 usage: ["gousage", "--overwrite", "./..."]
 update: ["go", "get", "-u", "./...", ";", "go", "mod", "tidy"]
+tidy: ["go", "mod", "tidy"]
+build: ["go", "build", "./..."]
+fix: ["go", "fix", "./..."]
