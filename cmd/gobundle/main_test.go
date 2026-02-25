@@ -121,7 +121,7 @@ func setupConfig(t *testing.T, tmpDir, bundle string) (shared, app, argStr strin
 	appCfg := filepath.Join(tmpDir, "gobundle-app.yaml")
 	sharedWithBundle := []byte(sharedConfigNoIdentity)
 	if bundle != "" {
-		sharedWithBundle = append(sharedWithBundle, []byte(fmt.Sprintf("bundle: %s\n", bundle))...)
+		sharedWithBundle = append(sharedWithBundle, fmt.Appendf(nil, "bundle: %s\n", bundle)...)
 	}
 	if err := os.WriteFile(sharedCfg, sharedWithBundle, 0600); err != nil {
 		t.Fatal(err)

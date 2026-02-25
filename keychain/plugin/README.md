@@ -65,6 +65,16 @@ type Config struct {
 ```
 Config represents the configuration for a keychain plugin.
 
+### Functions
+
+```go
+func DefaultConfigForReading() Config
+```
+DefaultConfigForReading returns a Config with default values suitable for
+reading from the keychain.
+
+
+
 ### Methods
 
 ```go
@@ -78,29 +88,19 @@ func (pc Config) FS() *plugins.FS
 ```go
 type KeychainFlags struct {
 	Binary  string `subcmd:"keychain-plugin,,path to the plugin binary"`
-	Type    Type   `subcmd:"keychain-type,data-protection,'the type of keychain plugin to use: file, data-protection or icloud'"`
 	Account string `subcmd:"keychain-account,,account that the keychain item belongs to"`
 }
 ```
 KeychainFlags are commonly required flags for working with the MacOS
 keychain plugin.
 
-### Methods
-
-```go
-func (f KeychainFlags) Config() Config
-```
-Config returns a Config based on the KeychainFlags. It provides a default
-value for the plugin binary if one is not specified in the flags and a
-default account of os.Getenv("USER") if no account is specified.
-
-
-
 
 ### Type ReadFlags
 ```go
 type ReadFlags struct {
 	KeychainFlags
+	// Note that the default value is 'all' for reading but 'icloud' for writing.
+	Type ReadType `subcmd:"keychain-type,all,'the type of keychain plugin to use: file, data-protection, icloud or all'"`
 }
 ```
 ReadFlags are used for reading from the keychain plugin.
@@ -109,6 +109,27 @@ ReadFlags are used for reading from the keychain plugin.
 
 ```go
 func (f ReadFlags) Config() Config
+```
+
+
+
+
+### Type ReadType
+```go
+type ReadType keychain.Type
+```
+ReadType represents the type of keychain plugin to use for reading.
+It aliases keychain.Type in order to add flag.Value support.
+
+### Methods
+
+```go
+func (t *ReadType) Set(v string) error
+```
+
+
+```go
+func (t *ReadType) String() string
 ```
 
 
@@ -160,31 +181,12 @@ SendResponse sends the provided response to the plugin caller.
 
 
 
-### Type Type
-```go
-type Type keychain.Type
-```
-Type represents the type of keychain plugin to use. It aliases keychain.Type
-in order to add flag.Value support.
-
-### Methods
-
-```go
-func (t *Type) Set(v string) error
-```
-
-
-```go
-func (t *Type) String() string
-```
-
-
-
-
 ### Type WriteFlags
 ```go
 type WriteFlags struct {
 	KeychainFlags
+	// Note that the default value is 'all' for reading but 'icloud' for writing.
+	Type          WriteType     `subcmd:"keychain-type,icloud,'the type of keychain plugin to use: file, data-protection or icloud'"`
 	UpdateInPlace bool          `subcmd:"keychain-update-in-place,false,set to true to update existing note in place"`
 	Accessibility Accessibility `subcmd:"keychain-accessibility,,optional accessibility level for the keychain item"`
 }
@@ -195,6 +197,27 @@ WriteFlags are used for writing to the keychain plugin.
 
 ```go
 func (f WriteFlags) Config() Config
+```
+
+
+
+
+### Type WriteType
+```go
+type WriteType keychain.Type
+```
+WriteType represents the type of keychain plugin to use for writing.
+It aliases keychain.Type in order to add flag.Value support.
+
+### Methods
+
+```go
+func (t *WriteType) Set(v string) error
+```
+
+
+```go
+func (t *WriteType) String() string
 ```
 
 
