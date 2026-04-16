@@ -6,6 +6,12 @@ import cloudeng.io/macos/keychain/plugin
 
 
 ## Constants
+### DefaultPluginBinaryPath
+```go
+DefaultPluginBinaryPath = "/Applications/macos-keychain-plugin.app"
+
+```
+
 ### PluginBinaryDefaultName
 ```go
 PluginBinaryDefaultName = "macos-keychain-plugin"
@@ -88,6 +94,7 @@ func (pc Config) FS() *plugins.FS
 ```go
 type KeychainFlags struct {
 	Binary  string `subcmd:"keychain-plugin,,path to the plugin binary"`
+	UseApp  string `subcmd:"keychain-use-app,,'if empty, defaults to Applications/macos-keychain-plugina.app, but can be set to any app bundle that contains the plugin binary'"`
 	Account string `subcmd:"keychain-account,,account that the keychain item belongs to"`
 }
 ```

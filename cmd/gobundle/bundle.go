@@ -30,7 +30,7 @@ func newBundle(cfg config) bundle {
 	}
 }
 
-func (b bundle) handleIconds() (func(), error) {
+func (b bundle) handleIcons() (func(), error) {
 	if len(b.cfg.Icon) == 0 {
 		return func() {}, nil
 	}
@@ -65,7 +65,7 @@ func (b bundle) createAndSign(ctx context.Context, binary string) error {
 	b.stepRunner.AddSteps(b.ap.WriteInfoPlist(),
 		b.ap.CopyExecutable(binary))
 
-	cleanup, err := b.handleIconds()
+	cleanup, err := b.handleIcons()
 	if err != nil {
 		return fmt.Errorf("error processing icons: %v", err)
 	}
