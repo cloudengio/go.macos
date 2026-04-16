@@ -56,6 +56,10 @@ func (b bundle) createAndSign(ctx context.Context, binary string) error {
 	}
 	results := b.stepRunner.Run(ctx, buildtools.NewCommandRunner())
 	for _, r := range results {
+		if r.Error() != nil {
+			fmt.Printf("%s\noutput: %s\n", r.CommandLine(), r.Output())
+			continue
+		}
 		printf("%s\n%s", r.CommandLine(), r.Output())
 	}
 	return results.Error()
