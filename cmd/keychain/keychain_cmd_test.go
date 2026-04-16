@@ -33,7 +33,7 @@ func runCmdNoError(ctx context.Context, t *testing.T, name string, args ...strin
 	t.Helper()
 	out, err := runCmd(ctx, name, args...)
 	if err != nil {
-		t.Fatalf("failed to run keychain-cmd %v: %v\n%s\n", args, err, out)
+		t.Fatalf("failed to run %s %v: %v\n%s\n", name, args, err, out)
 	}
 	t.Logf("command: %v %v\n%s\n", name, args, out)
 	return out
