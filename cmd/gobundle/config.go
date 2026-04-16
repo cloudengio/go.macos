@@ -27,6 +27,7 @@ type config struct {
 	Path                     string               `yaml:"bundle"`
 	Info                     buildtools.InfoPlist `yaml:"info.plist"`
 	ProvisioningProfile      string               `yaml:"profile"`
+	Icon                     string               `yaml:"icon"`
 }
 
 func readconfig(file string) (map[string]any, error) {

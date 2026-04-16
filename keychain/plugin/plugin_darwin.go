@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"cloudeng.io/logging/ctxlog"
 	"cloudeng.io/macos/keychain"
@@ -89,6 +90,7 @@ func (a *Accessibility) String() string {
 // the MacOS keychain plugin.
 type KeychainFlags struct {
 	Binary  string `subcmd:"keychain-plugin,,path to the plugin binary"`
+	UseApp  bool   `subcmd:"keychain-use-app,true,set to false to disable using /Applications/macos-keychain-plugina.app as the default plugin binary"`
 	Account string `subcmd:"keychain-account,,account that the keychain item belongs to"`
 }
 
@@ -110,15 +112,24 @@ type WriteFlags struct {
 
 // PluginBinaryDefaultName is the default name of the plugin binary.
 const PluginBinaryDefaultName = "macos-keychain-plugin"
+const DefaultPluginBinaryPath = "/Applications/macos-keychain-plugin.app"
 
 // Config returns a Config based on the KeychainFlags.
 // It provides a default value for the plugin binary if one is not specified
 // in the flags and a default account of os.Getenv("USER") if no account
 // is specified.
 func (f KeychainFlags) pluginConfig() Config {
+	if f.UseApp {
+		candidate := filepath.Join(DefaultPluginBinaryPath, "Contents", "MacOS", "macos-keychain-plugin")
+		if _, err := os.Stat(candidate); err == nil {
+			f.Binary = candidate
+		}
+	}
 	if f.Binary == "" {
+		// Maybe PluginBinaryDefaultName is in the PATH.
 		f.Binary = PluginBinaryDefaultName
 	}
+
 	account := f.Account
 	if account == "" {
 		account = os.Getenv("USER")

@@ -6,11 +6,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"cloudeng.io/macos/buildtools"
-	"gopkg.in/yaml.v3"
 )
 
 type bundle struct {
@@ -31,21 +29,32 @@ func newBundle(cfg config) bundle {
 }
 
 func (b bundle) createAndSign(ctx context.Context, binary string) error {
-	configData, err := yaml.Marshal(b.cfg)
-	if err != nil {
-		return fmt.Errorf("error marshaling config: %v", err)
-	}
 	b.stepRunner.AddSteps(b.ap.Clean())
 	b.stepRunner.AddSteps(b.ap.Create()...)
 	if b.cfg.ProvisioningProfile != "" {
 		profile := os.ExpandEnv(b.cfg.ProvisioningProfile)
 		b.stepRunner.AddSteps(b.ap.CopyContents(profile, "embedded.provisionprofile"))
 	}
-	b.stepRunner.AddSteps(
-		buildtools.WriteFile(configData, 0644,
-			b.ap.Resources("gobundle.yml")))
 	b.stepRunner.AddSteps(b.ap.WriteInfoPlist(),
 		b.ap.CopyExecutable(binary))
+
+	if len(b.cfg.Icon) > 0 {
+		tempDir, err := os.MkdirTemp("", "gobundle-icon")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tempDir)
+		tempDir = "./icons"
+		iconSet := buildtools.IconSet{
+			Icon: b.cfg.Icon,
+			Dir:  tempDir,
+		}
+		b.stepRunner.AddSteps(iconSet.CreateIconVariants(
+			b.cfg.Icon,
+			tempDir)...)
+		b.stepRunner.AddSteps(iconSet.CreateIcns())
+		b.stepRunner.AddSteps(b.ap.CopyContents(iconSet.IconSetFile(), "Contents/Resources/"+"AppIcon.icns"))
+	}
 
 	if b.cfg.Identity != "" {
 		signer := b.cfg.Signer()
