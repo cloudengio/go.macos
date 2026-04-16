@@ -18,9 +18,9 @@ import (
 var defaultSeccompProfile []byte
 
 // SeccompProfile matches the structure of the Docker seccomp JSON
-//type SeccompProfile struct {
-//	map[string]any
-//}
+//  type SeccompProfile struct {
+//	  map[string]any
+//  }
 
 // SyscallRule represents a specific whitelist rule
 type SyscallRule struct {
@@ -45,7 +45,7 @@ type seccompFlags struct {
 	Output string `subcmd:"output,,write seccomp profile to file"`
 }
 
-func (dc dockerCmds) createSeccompProfile(ctx context.Context, f any, args []string) error {
+func (dc dockerCmds) createSeccompProfile(_ context.Context, f any, _ []string) error {
 	fv := f.(*seccompFlags)
 	resp, err := http.Get("https://raw.githubusercontent.com/moby/profiles/refs/heads/main/seccomp/default.json")
 	if err != nil {

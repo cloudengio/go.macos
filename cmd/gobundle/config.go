@@ -32,7 +32,7 @@ type config struct {
 
 func readconfig(file string) (map[string]any, error) {
 	cfg := map[string]any{}
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(file) //nolint:gosec // G703 overly restrictive for this use case.
 	if err != nil {
 		return nil, err
 	}

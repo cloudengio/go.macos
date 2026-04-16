@@ -22,6 +22,13 @@ PluginBinaryDefaultName is the default name of the plugin binary.
 
 
 ## Functions
+### Func LocatePluginBinary
+```go
+func LocatePluginBinary(appBundle, binary string) (string, error)
+```
+LocatePluginBinary attempts to locate the plugin binary by first checking
+the specified app bundle and then looking in the PATH for binary.
+
 ### Func NewRequest
 ```go
 func NewRequest(keyname string, cfg Config) (plugins.Request, error)

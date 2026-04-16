@@ -18,12 +18,13 @@ import (
 	"strings"
 	"testing"
 
+	"cloudeng.io/macos/keychain/plugin"
 	"cloudeng.io/os/executil"
 	"cloudeng.io/security/keys/keychain/plugins"
 )
 
 func runCmd(ctx context.Context, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G702 overly restritive for a test.
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -37,19 +38,6 @@ func runCmdNoError(ctx context.Context, t *testing.T, name string, args ...strin
 	}
 	t.Logf("command: %v %v\n%s\n", name, args, out)
 	return out
-}
-
-func findPluginBinary() (string, error) {
-	appPath := filepath.Join("/", "Applications", "macos-keychain-plugin.app", "Contents", "MacOS", "macos-keychain-plugin")
-	fi, err := os.Stat(appPath)
-	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
-		return appPath, nil
-	}
-	path, err := exec.LookPath("macos-keychain-plugin")
-	if err != nil {
-		return "", fmt.Errorf("failed to find plugin binary in PATH: %v", err)
-	}
-	return path, nil
 }
 
 func TestKeychainCommand(t *testing.T) {
@@ -97,7 +85,9 @@ func TestKeychainCommand(t *testing.T) {
 				t.Errorf("read value mismatch for %s: got %q, want %q", kt, got, value)
 			}
 
-			pluginBinary, err := findPluginBinary()
+			pluginBinary, err := plugin.LocatePluginBinary(
+				filepath.Join("/", "Applications", "macos-keychain-plugin.app"),
+				"macos-keychain-plugin")
 			if err != nil {
 				t.Fatalf("failed to find plugin binary: %v", err)
 			}

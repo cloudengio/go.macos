@@ -90,7 +90,7 @@ func (sc secretsCmd) config(ctx context.Context, fv Flags) (context.Context, aws
 	return ctx, awscfg, nil
 }
 
-func (sc secretsCmd) Read(ctx context.Context, f any, args []string) error {
+func (sc secretsCmd) Read(ctx context.Context, f any, _ []string) error {
 	fl := f.(*ReadFlags)
 	ctx, cfg, err := sc.config(ctx, fl.Flags)
 	if err != nil {

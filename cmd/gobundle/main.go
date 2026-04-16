@@ -78,7 +78,7 @@ func main() {
 }
 
 func rungo(ctx context.Context, args []string) error {
-	cmd := exec.CommandContext(ctx, "go", args...)
+	cmd := exec.CommandContext(ctx, "go", args...) //nolint:gosec // G702 overly restrictive for this use case.
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

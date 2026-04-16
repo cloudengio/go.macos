@@ -68,6 +68,6 @@ func (dc dockerCmds) run(ctx context.Context, f any, args []string) error {
 
 type EntryFlags struct{}
 
-func (dockerCmds) entry(ctx context.Context, f any, args []string) error {
+func (dockerCmds) entry(context.Context, any, []string) error {
 	return fmt.Errorf("entry not implemented on macos")
 }

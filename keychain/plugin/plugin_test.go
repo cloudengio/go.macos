@@ -24,6 +24,7 @@ import (
 func TestPluginFlagsAndConfig(t *testing.T) {
 	args := []string{
 		"--keychain-plugin=./testdata/example_plugin",
+		"--keychain-use-app=not-there",
 		"--keychain-type=data-protection",
 		"--keychain-account=test-account",
 		"--keychain-update-in-place=true",
@@ -180,6 +181,7 @@ func TestReadWriteTypes(t *testing.T) {
 func TestReadFlags(t *testing.T) {
 	args := []string{
 		"--keychain-plugin=./testdata/example_plugin",
+		"--keychain-use-app=not-there",
 		"--keychain-type=all",
 		"--keychain-account=test-account",
 	}

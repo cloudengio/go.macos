@@ -19,13 +19,14 @@ import (
 	"testing"
 	"time"
 
+	"cloudeng.io/macos/keychain/plugin"
 	"cloudeng.io/os/executil"
 )
 
 func runCmdNoError(t *testing.T, name string, args ...string) string {
 	t.Helper()
 	out := bytes.NewBuffer(make([]byte, 0, 1024))
-	cmd := exec.CommandContext(t.Context(), name, args...)
+	cmd := exec.CommandContext(t.Context(), name, args...) //nolint:gosec // G702 overly restritive for a test.
 	if testing.Verbose() {
 		cmd.Stdout = io.MultiWriter(out, os.Stdout)
 		cmd.Stderr = os.Stderr
@@ -62,7 +63,7 @@ func TestDockerBuildRun(t *testing.T) {
 
 	// Data to store
 	keyID := "test-key"
-	tokenVal := "test-value-secret"
+	tokenVal := "test-value-secret" //nolint:gosec // G101 false positive for test data.
 	keyData := []map[string]string{
 		{
 			"key_id": keyID,
@@ -80,7 +81,13 @@ func TestDockerBuildRun(t *testing.T) {
 		"write", "--keychain-type=file", "--name="+serviceName, tempFile)
 
 	defer func() {
-		out := runCmdNoError(t, "macos-keychain-plugin",
+		pluginBinary, err := plugin.LocatePluginBinary(
+			filepath.Join("/", "Applications", "macos-keychain-plugin.app"),
+			"macos-keychain-plugin")
+		if err != nil {
+			t.Fatalf("failed to find plugin binary: %v", err)
+		}
+		out := runCmdNoError(t, pluginBinary,
 			"delete", "file", account, serviceName)
 		t.Log("delete output:", out)
 	}()

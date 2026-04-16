@@ -10,10 +10,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"cloudeng.io/logging/ctxlog"
@@ -114,6 +116,21 @@ type WriteFlags struct {
 const PluginBinaryDefaultName = "macos-keychain-plugin"
 const DefaultPluginBinaryPath = "/Applications/macos-keychain-plugin.app"
 
+// LocatePluginBinary attempts to locate the plugin binary by first checking the
+// specified app bundle and then looking in the PATH for binary.
+func LocatePluginBinary(appBundle, binary string) (string, error) {
+	appPath := filepath.Join(appBundle, "Contents", "MacOS", "macos-keychain-plugin")
+	fi, err := os.Stat(appPath)
+	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
+		return appPath, nil
+	}
+	path, err := exec.LookPath(binary)
+	if err != nil {
+		return "", fmt.Errorf("failed to find plugin binary in PATH: %v", err)
+	}
+	return path, nil
+}
+
 // Config returns a Config based on the KeychainFlags.
 // It provides a default value for the plugin binary if one is not specified
 // in the flags and a default account of os.Getenv("USER") if no account
@@ -144,13 +161,13 @@ func (f KeychainFlags) pluginConfig() Config {
 }
 
 func (f ReadFlags) Config() Config {
-	c := f.KeychainFlags.pluginConfig()
+	c := f.pluginConfig()
 	c.Type = keychain.Type(f.Type)
 	return c
 }
 
 func (f WriteFlags) Config() Config {
-	cfg := f.KeychainFlags.pluginConfig()
+	cfg := f.pluginConfig()
 	cfg.Type = keychain.Type(f.Type)
 	cfg.UpdateInPlace = f.UpdateInPlace
 	cfg.Accessibility = keychain.Accessibility(f.Accessibility)

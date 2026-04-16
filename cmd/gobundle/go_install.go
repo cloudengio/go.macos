@@ -14,13 +14,13 @@ import (
 func handleGoInstall(ctx context.Context, merged []byte, args []string) error {
 	_, rest := consumeBuildArgs(args)
 	installDir, binary := deterimineInstallBinary(rest)
-	if err := os.Remove(binary); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(binary); err != nil && !os.IsNotExist(err) { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error removing original binary: %v", err)
 	}
 	if err := rungo(ctx, append([]string{"install"}, args...)); err != nil {
 		return err
 	}
-	if _, err := os.Stat(binary); err != nil {
+	if _, err := os.Stat(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error finding expected binary: %v: %v", binary, err)
 	}
 	cfg, err := configForGoInstall(installDir, binary, merged)
@@ -31,7 +31,7 @@ func handleGoInstall(ctx context.Context, merged []byte, args []string) error {
 	if err := b.createAndSign(ctx, binary); err != nil {
 		return err
 	}
-	if err := os.Remove(binary); err != nil {
+	if err := os.Remove(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error removing original binary: %v", err)
 	}
 	if err := os.Symlink(b.ap.ExecutablePath(), binary); err != nil {

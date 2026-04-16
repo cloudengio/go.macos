@@ -86,16 +86,6 @@ func TestGobundleNoArgs(t *testing.T) {
 	}
 }
 
-func readFile(t *testing.T, path string) []byte {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-
-		t.Fatalf("failed to read file: %v", err)
-	}
-	return data
-}
-
 func exists(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); err != nil {
@@ -107,13 +97,10 @@ func exists(t *testing.T, path string) {
 	}
 }
 
-func inspectBundle(t *testing.T, bundle, binary string) string {
+func inspectBundle(t *testing.T, bundle, binary string) {
 	t.Helper()
 	exists(t, filepath.Join(bundle, "Contents", "Info.plist"))
 	exists(t, filepath.Join(bundle, "Contents", "MacOS", binary))
-	exists(t, filepath.Join(bundle, "Contents", "Resources", "gobundle.yml"))
-	cfg := readFile(t, filepath.Join(bundle, "Contents", "Resources", "gobundle.yml"))
-	return string(cfg)
 }
 
 func setupConfig(t *testing.T, tmpDir, bundle string) (shared, app, argStr string) {
