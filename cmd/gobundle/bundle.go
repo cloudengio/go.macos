@@ -40,6 +40,7 @@ func (b bundle) handleIcons() (func(), error) {
 	}
 	iconDir := filepath.Join(tempDir, "AppIcon.iconset")
 	if err := os.Mkdir(iconDir, 0700); err != nil {
+		_ = os.RemoveAll(tempDir)
 		return nil, err
 	}
 	iconSet := buildtools.IconSet{
