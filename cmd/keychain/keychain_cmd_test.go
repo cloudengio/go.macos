@@ -39,6 +39,19 @@ func runCmdNoError(ctx context.Context, t *testing.T, name string, args ...strin
 	return out
 }
 
+func findPluginBinary() (string, error) {
+	appPath := filepath.Join("/", "Applications", "macos-keychain-plugin.app", "Contents", "MacOS", "macos-keychain-plugin")
+	fi, err := os.Stat(appPath)
+	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
+		return appPath, nil
+	}
+	path, err := exec.LookPath("macos-keychain-plugin")
+	if err != nil {
+		return "", fmt.Errorf("failed to find plugin binary in PATH: %v", err)
+	}
+	return path, nil
+}
+
 func TestKeychainCommand(t *testing.T) {
 	if os.Getenv("SKIP_KEYCHAIN_PLUGIN_TESTS") != "" {
 		t.Skip("skipping keychain plugin tests")
@@ -84,9 +97,13 @@ func TestKeychainCommand(t *testing.T) {
 				t.Errorf("read value mismatch for %s: got %q, want %q", kt, got, value)
 			}
 
-			// Delete from keychain, use the plugin in directly to do so.
+			pluginBinary, err := findPluginBinary()
+			if err != nil {
+				t.Fatalf("failed to find plugin binary: %v", err)
+			}
+			// Delete from keychain, use the plugin directly to do so.
 			t.Logf("deleting keychain type %v item %q for account %q", kt, keyName, account)
-			out = runCmdNoError(ctx, t, "macos-keychain-plugin",
+			out = runCmdNoError(ctx, t, pluginBinary,
 				"delete", kt, account, keyName)
 			t.Log("delete output:", out)
 

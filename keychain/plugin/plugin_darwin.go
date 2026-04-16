@@ -90,7 +90,7 @@ func (a *Accessibility) String() string {
 // the MacOS keychain plugin.
 type KeychainFlags struct {
 	Binary  string `subcmd:"keychain-plugin,,path to the plugin binary"`
-	UseApp  bool   `subcmd:"keychain-use-app,true,set to false to disable using /Applications/macos-keychain-plugina.app as the default plugin binary"`
+	UseApp  string `subcmd:"keychain-use-app,,'if empty, defaults to Applications/macos-keychain-plugina.app, but can be set to any app bundle that contains the plugin binary'"`
 	Account string `subcmd:"keychain-account,,account that the keychain item belongs to"`
 }
 
@@ -119,12 +119,15 @@ const DefaultPluginBinaryPath = "/Applications/macos-keychain-plugin.app"
 // in the flags and a default account of os.Getenv("USER") if no account
 // is specified.
 func (f KeychainFlags) pluginConfig() Config {
-	if f.UseApp {
-		candidate := filepath.Join(DefaultPluginBinaryPath, "Contents", "MacOS", "macos-keychain-plugin")
-		if _, err := os.Stat(candidate); err == nil {
-			f.Binary = candidate
-		}
+	appCandidate := filepath.Join(DefaultPluginBinaryPath, "Contents", "MacOS", "macos-keychain-plugin")
+	if f.UseApp != "" {
+		appCandidate = filepath.Join(f.UseApp, "Contents", "MacOS", PluginBinaryDefaultName)
 	}
+	fi, err := os.Stat(appCandidate)
+	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
+		f.Binary = appCandidate
+	}
+
 	if f.Binary == "" {
 		// Maybe PluginBinaryDefaultName is in the PATH.
 		f.Binary = PluginBinaryDefaultName
