@@ -10,10 +10,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"os"
+	"os/exec"
+	"path/filepath"
 
 	"cloudeng.io/logging/ctxlog"
 	"cloudeng.io/macos/keychain"
@@ -89,6 +92,7 @@ func (a *Accessibility) String() string {
 // the MacOS keychain plugin.
 type KeychainFlags struct {
 	Binary  string `subcmd:"keychain-plugin,,path to the plugin binary"`
+	UseApp  string `subcmd:"keychain-use-app,,'if empty, defaults to Applications/macos-keychain-plugin.app, but can be set to any app bundle that contains the plugin binary (macos-keychain-plugin)'"`
 	Account string `subcmd:"keychain-account,,account that the keychain item belongs to"`
 }
 
@@ -110,15 +114,42 @@ type WriteFlags struct {
 
 // PluginBinaryDefaultName is the default name of the plugin binary.
 const PluginBinaryDefaultName = "macos-keychain-plugin"
+const DefaultPluginBinaryPath = "/Applications/macos-keychain-plugin.app"
+
+// LocatePluginBinary attempts to locate the plugin binary by first checking the
+// specified app bundle and then looking in the PATH for binary.
+func LocatePluginBinary(appBundle, binary string) (string, error) {
+	appPath := filepath.Join(appBundle, "Contents", "MacOS", "macos-keychain-plugin")
+	fi, err := os.Stat(appPath)
+	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
+		return appPath, nil
+	}
+	path, err := exec.LookPath(binary)
+	if err != nil {
+		return "", fmt.Errorf("failed to find plugin binary in PATH: %v", err)
+	}
+	return path, nil
+}
 
 // Config returns a Config based on the KeychainFlags.
 // It provides a default value for the plugin binary if one is not specified
 // in the flags and a default account of os.Getenv("USER") if no account
 // is specified.
 func (f KeychainFlags) pluginConfig() Config {
+	appCandidate := filepath.Join(DefaultPluginBinaryPath, "Contents", "MacOS", "macos-keychain-plugin")
+	if f.UseApp != "" {
+		appCandidate = filepath.Join(f.UseApp, "Contents", "MacOS", PluginBinaryDefaultName)
+	}
+	fi, err := os.Stat(appCandidate)
+	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
+		f.Binary = appCandidate
+	}
+
 	if f.Binary == "" {
+		// Maybe PluginBinaryDefaultName is in the PATH.
 		f.Binary = PluginBinaryDefaultName
 	}
+
 	account := f.Account
 	if account == "" {
 		account = os.Getenv("USER")
@@ -130,13 +161,13 @@ func (f KeychainFlags) pluginConfig() Config {
 }
 
 func (f ReadFlags) Config() Config {
-	c := f.KeychainFlags.pluginConfig()
+	c := f.pluginConfig()
 	c.Type = keychain.Type(f.Type)
 	return c
 }
 
 func (f WriteFlags) Config() Config {
-	cfg := f.KeychainFlags.pluginConfig()
+	cfg := f.pluginConfig()
 	cfg.Type = keychain.Type(f.Type)
 	cfg.UpdateInPlace = f.UpdateInPlace
 	cfg.Accessibility = keychain.Accessibility(f.Accessibility)

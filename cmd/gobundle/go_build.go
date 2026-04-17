@@ -18,7 +18,7 @@ func handleGoBuild(ctx context.Context, merged []byte, args []string) error {
 	if err := rungo(ctx, append([]string{"build"}, args...)); err != nil {
 		return err
 	}
-	if _, err := os.Stat(binary); err != nil {
+	if _, err := os.Stat(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error finding expected binary: %v: %v", binary, err)
 	}
 	cfg, err := configForGoBuild(binary, dashO, merged)
@@ -29,7 +29,7 @@ func handleGoBuild(ctx context.Context, merged []byte, args []string) error {
 	if err := b.createAndSign(ctx, binary); err != nil {
 		return err
 	}
-	if err := os.Remove(binary); err != nil {
+	if err := os.Remove(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error removing original binary: %v", err)
 	}
 	if err := os.Symlink(b.ap.ExecutablePath(), binary); err != nil {
@@ -133,7 +133,7 @@ func determineBuildBinary(dashO string, rest []string) string {
 }
 
 func isDir(path string) bool {
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) //nolint:gosec // G703 overly restrictive for this use case.
 	if err != nil {
 		return false
 	}

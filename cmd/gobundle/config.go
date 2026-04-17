@@ -27,11 +27,12 @@ type config struct {
 	Path                     string               `yaml:"bundle"`
 	Info                     buildtools.InfoPlist `yaml:"info.plist"`
 	ProvisioningProfile      string               `yaml:"profile"`
+	Icon                     string               `yaml:"icon"`
 }
 
 func readconfig(file string) (map[string]any, error) {
 	cfg := map[string]any{}
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(file) //nolint:gosec // G703 overly restrictive for this use case.
 	if err != nil {
 		return nil, err
 	}

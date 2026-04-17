@@ -8,3 +8,5 @@ entitlements:
   #  ["${CUSTOM_KEYCHAIN_PATH}"]
 info.plist:
   CFBundleIdentifier: "${CLOUDENG_DEVID}.io.cloudeng.${CLOUDENG_KEYCHAIN_IDENTIFIER}"
+  CFBundleIconFile: AppIcon.icns
+icon: keychain_plugin_icon.png

@@ -18,12 +18,13 @@ import (
 	"strings"
 	"testing"
 
+	"cloudeng.io/macos/keychain/plugin"
 	"cloudeng.io/os/executil"
 	"cloudeng.io/security/keys/keychain/plugins"
 )
 
 func runCmd(ctx context.Context, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G702 overly restritive for a test.
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -84,9 +85,15 @@ func TestKeychainCommand(t *testing.T) {
 				t.Errorf("read value mismatch for %s: got %q, want %q", kt, got, value)
 			}
 
-			// Delete from keychain, use the plugin in directly to do so.
+			pluginBinary, err := plugin.LocatePluginBinary(
+				filepath.Join("/", "Applications", "macos-keychain-plugin.app"),
+				"macos-keychain-plugin")
+			if err != nil {
+				t.Fatalf("failed to find plugin binary: %v", err)
+			}
+			// Delete from keychain, use the plugin directly to do so.
 			t.Logf("deleting keychain type %v item %q for account %q", kt, keyName, account)
-			out = runCmdNoError(ctx, t, "macos-keychain-plugin",
+			out = runCmdNoError(ctx, t, pluginBinary,
 				"delete", kt, account, keyName)
 			t.Log("delete output:", out)
 

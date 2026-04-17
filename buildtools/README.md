@@ -96,7 +96,7 @@ in the Info.plist into the app bundle.
 
 
 ```go
-func (b AppBundle) CopyIcons(icons []IconSet) []Step
+func (b AppBundle) CopyIcons(icons ...IconSet) []Step
 ```
 CopyIcons returns steps to copy the specified icons into the app bundle's
 Resources directory. If multiple icons are specified and the icon's

@@ -13,7 +13,7 @@ import (
 )
 
 func runCommand(ctx context.Context, binary string, args []string) error {
-	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd := exec.CommandContext(ctx, binary, args...) //nolint:gosec // G702 overly restritive for this use case.
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

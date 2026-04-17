@@ -180,7 +180,7 @@ func TestWriteDataProtectionReadAll(t *testing.T) {
 	}
 }
 
-func TestFS(t *testing.T) {
+func TestFS(*testing.T) {
 	var _ file.ReadFileFS = keychain.New(keychain.KeychainFileBased, "test-account")
 	var _ file.WriteFileFS = keychain.New(keychain.KeychainFileBased, "test-account")
 }

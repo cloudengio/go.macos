@@ -51,7 +51,7 @@ func possiblyHandleCommandLine(args []string) {
 	}
 	switch args[0] {
 	case "delete":
-		delete(args)
+		deleteArgs(args)
 	case "read":
 		read(args)
 	default:
@@ -71,7 +71,7 @@ func parseArgs(args []string) (kt keychain.Type, account, service string, kc *ke
 	return kt, account, service, keychain.New(kt, account)
 }
 
-func delete(args []string) {
+func deleteArgs(args []string) {
 	kt, account, service, kc := parseArgs(args)
 	if err := kc.DeleteSecureNote(service); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to delete keychain item %q for account %q: %v\n", service, account, err)

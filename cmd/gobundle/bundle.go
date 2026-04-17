@@ -8,9 +8,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"cloudeng.io/macos/buildtools"
-	"gopkg.in/yaml.v3"
 )
 
 type bundle struct {
@@ -30,22 +30,47 @@ func newBundle(cfg config) bundle {
 	}
 }
 
-func (b bundle) createAndSign(ctx context.Context, binary string) error {
-	configData, err := yaml.Marshal(b.cfg)
-	if err != nil {
-		return fmt.Errorf("error marshaling config: %v", err)
+func (b bundle) handleIcons() (func(), error) {
+	if len(b.cfg.Icon) == 0 {
+		return func() {}, nil
 	}
+	tempDir, err := os.MkdirTemp("", "gobundle-icon")
+	if err != nil {
+		return nil, err
+	}
+	iconDir := filepath.Join(tempDir, "AppIcon.iconset")
+	if err := os.Mkdir(iconDir, 0700); err != nil {
+		_ = os.RemoveAll(tempDir)
+		return nil, err
+	}
+	iconSet := buildtools.IconSet{
+		Icon: b.cfg.Icon,
+		Dir:  iconDir,
+	}
+	b.stepRunner.AddSteps(iconSet.CreateIconVariants(
+		iconSet.Icon, iconDir)...)
+	b.stepRunner.AddSteps(iconSet.CreateIcns())
+	b.stepRunner.AddSteps(b.ap.CopyIcons(iconSet)...)
+	return func() {
+		os.RemoveAll(tempDir)
+	}, nil
+}
+
+func (b bundle) createAndSign(ctx context.Context, binary string) error {
 	b.stepRunner.AddSteps(b.ap.Clean())
 	b.stepRunner.AddSteps(b.ap.Create()...)
 	if b.cfg.ProvisioningProfile != "" {
 		profile := os.ExpandEnv(b.cfg.ProvisioningProfile)
 		b.stepRunner.AddSteps(b.ap.CopyContents(profile, "embedded.provisionprofile"))
 	}
-	b.stepRunner.AddSteps(
-		buildtools.WriteFile(configData, 0644,
-			b.ap.Resources("gobundle.yml")))
 	b.stepRunner.AddSteps(b.ap.WriteInfoPlist(),
 		b.ap.CopyExecutable(binary))
+
+	cleanup, err := b.handleIcons()
+	if err != nil {
+		return fmt.Errorf("error processing icons: %v", err)
+	}
+	defer cleanup()
 
 	if b.cfg.Identity != "" {
 		signer := b.cfg.Signer()

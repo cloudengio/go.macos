@@ -153,7 +153,7 @@ func (b AppBundle) Resources(elem ...string) string {
 // field is set or if there is only a single icon then it is copied to the location
 // specified by the bundle's Info.plist CFBundleIconFile field. All other icons
 // are copied to their own directories within the Resources directory.
-func (b AppBundle) CopyIcons(icons []IconSet) []Step {
+func (b AppBundle) CopyIcons(icons ...IconSet) []Step {
 	if len(icons) == 0 {
 		return []Step{NoopStep("CopyIcons: no icons specified for the bundle")}
 	}
