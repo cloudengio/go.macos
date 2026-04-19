@@ -73,7 +73,7 @@ func (pluginCmd) Read(ctx context.Context, f any, args []string) error {
 		}
 		return nil
 	}
-	fmt.Printf("%s: exists, use --output-file to write to a file, use - for stdout\n", args[0])
+	fmt.Printf("%s: exists, use --output to write to a file, use - for stdout\n", args[0])
 	return nil
 }
 
