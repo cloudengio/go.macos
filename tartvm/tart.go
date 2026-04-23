@@ -45,7 +45,8 @@ type Instance struct {
 	// Stop, Suspend and Delete are all mutually exclusive for example.
 	opMutex sync.Mutex
 
-	asyncWait *executil.AsyncWait // GUARDED by opMutex, used to track the tart run command when starting the VM.
+	asyncWait *executil.AsyncWait  // GUARDED by opMutex, used to track the tart run command when starting the VM.
+	runStderr *executil.TailWriter // GUARDED by opMutex, used to capture the stderr of the tart run command for error reporting if the command fails or the VM exits unexpectedly.
 }
 
 // Option represents an Option to New.
@@ -166,7 +167,7 @@ func (inst *Instance) getIP() string {
 
 // State returns the current state and any error from a running
 // instance that terminated without being stopped or suspend.
-func (inst *Instance) State(ctx context.Context) vms.State {
+func (inst *Instance) State(_ context.Context) vms.State {
 	inst.stateMu.Lock()
 	defer inst.stateMu.Unlock()
 	return inst.state
@@ -259,9 +260,10 @@ func (inst *Instance) Start(ctx context.Context, stdout, stderr io.Writer) error
 	start := time.Now()
 	prev := inst.setState(vms.StateStarting)
 
+	stderrCopy := executil.NewTailWriter(1024)
 	cmd := exec.CommandContext(ctx, "tart", args...)
 	cmd.Stdout = stdout
-	cmd.Stderr = stderr
+	cmd.Stderr = io.MultiWriter(stderr, stderrCopy)
 	cmd.Stdin = nil // Detach stdin entirely
 	if err := cmd.Start(); err != nil {
 		inst.logger.Error("tart run", "args", args, "error", err)
@@ -289,13 +291,14 @@ func (inst *Instance) Start(ctx context.Context, stdout, stderr io.Writer) error
 	inst.currentIP = strings.TrimSpace(ip)
 	inst.state = vms.StateRunning
 	inst.asyncWait = executil.NewAsyncWait(cmd)
+	inst.runStderr = stderrCopy
 	inst.stateMu.Unlock()
 	inst.logger.Info("tart run completed", "args", args, "ip", ip, "pid", cmd.Process.Pid, "duration", time.Since(start).String())
 	return nil
 }
 
 func (inst *Instance) runForceStop(ctx context.Context, timeout time.Duration) error {
-	out, err := exec.CommandContext(ctx, "tart", "stop", inst.name, "--timeout", strconv.Itoa(int(timeout.Seconds()))).CombinedOutput()
+	out, err := exec.CommandContext(ctx, "tart", "stop", inst.name, "--timeout", strconv.Itoa(int(timeout.Seconds()))).CombinedOutput() //nolint:gosec // G204 false positive
 	if err != nil {
 		if isAlreadyStoppedErrorMsg(string(out)) {
 			return nil
@@ -360,7 +363,9 @@ func (inst *Instance) handleStopSuspend(ctx context.Context, args ...string) (ru
 	exited, err := inst.asyncWait.WaitDone()
 	if exited {
 		if err != nil {
-			return err, nil
+			stderr := string(inst.runStderr.Bytes())
+			args := inst.asyncWait.Cmd().Args
+			return convertError(args, stderr, err), nil
 		}
 		return nil, nil
 	}
@@ -381,7 +386,12 @@ func (inst *Instance) handleStopSuspend(ctx context.Context, args ...string) (ru
 		return nil, convertError(args, stderr, err)
 	}
 	runErr = inst.asyncWait.Wait()
-	return runErr, nil
+	if runErr != nil {
+		stderr := string(inst.runStderr.Bytes())
+		args := inst.asyncWait.Cmd().Args
+		return convertError(args, stderr, runErr), nil
+	}
+	return nil, nil
 }
 
 func (inst *Instance) runSyncExclusiveStopSuspend(ctx context.Context, action vms.Action, intermediate, target vms.State, tartState string, args ...string) (runErr, stopSuspendErr error) {
@@ -504,7 +514,7 @@ func (inst *Instance) waitForReadyUsingExecOne(ctx context.Context) error {
 	defer cancel()
 	out := executil.NewTailWriter(1024)
 	now := time.Now().String()
-	cmd := exec.CommandContext(ctx, "tart", "exec", inst.name, "echo", now)
+	cmd := exec.CommandContext(ctx, "tart", "exec", inst.name, "echo", now) //nolint:gosec // G204 false positive
 	cmd.Stdout = out
 	cmd.Stderr = out
 	cmd.Stdin = nil // Detach stdin entirely
@@ -513,7 +523,7 @@ func (inst *Instance) waitForReadyUsingExecOne(ctx context.Context) error {
 	}
 	read := strings.TrimSpace(string(out.Bytes()))
 	if read != now {
-		return fmt.Errorf("tart exec: output does not contain expected string: %s != %s", string(read), now)
+		return fmt.Errorf("tart exec: output does not contain expected string: %s != %s", read, now)
 	}
 	return nil
 }

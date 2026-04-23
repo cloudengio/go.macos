@@ -47,7 +47,7 @@ jobs:
 
       - name: install tart
         run: |
-          brew install tart
+          brew install cirruslabs/cli/tart
 
       - name: run go tests
         env:
