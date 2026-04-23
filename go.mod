@@ -13,7 +13,7 @@ require (
 	cloudeng.io/os v0.0.0-20260423190947-81385993b155
 	cloudeng.io/security v0.0.0-20260409195307-0d32d333270c
 	cloudeng.io/text v0.0.15
-	cloudeng.io/vms v0.0.0-20260423171305-626d3faa8103
+	cloudeng.io/vms v0.0.0-20260423190947-81385993b155
 	github.com/aws/aws-sdk-go-v2 v1.41.6
 	github.com/cloudengio/go-keychain v0.0.0-20251120230617-c4053f60cda7
 	github.com/cloudengio/keyctl v0.0.0-20251205212509-b187ca61e8c2

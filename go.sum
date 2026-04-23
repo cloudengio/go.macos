@@ -26,6 +26,8 @@ cloudeng.io/vms v0.0.0-20260423002756-4c2d1fe4bcf8 h1:6TF/FxutXLfWxachvsQvghoB7A
 cloudeng.io/vms v0.0.0-20260423002756-4c2d1fe4bcf8/go.mod h1:AbMv6UrNhE13mM9kCzCJtitALzgmS6EgENggouVq1z0=
 cloudeng.io/vms v0.0.0-20260423171305-626d3faa8103 h1:9acC72prDiFwjnr7uqcNcUH5cG1pCpyY/KFRB700beY=
 cloudeng.io/vms v0.0.0-20260423171305-626d3faa8103/go.mod h1:AbMv6UrNhE13mM9kCzCJtitALzgmS6EgENggouVq1z0=
+cloudeng.io/vms v0.0.0-20260423190947-81385993b155 h1:wRfYO+tk6fIdHA4+/qS9eyK0UY8Vt7mHADneONS0rco=
+cloudeng.io/vms v0.0.0-20260423190947-81385993b155/go.mod h1:AbMv6UrNhE13mM9kCzCJtitALzgmS6EgENggouVq1z0=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/aws/aws-sdk-go-v2 v1.41.6 h1:1AX0AthnBQzMx1vbmir3Y4WsnJgiydmnJjiLu+LvXOg=

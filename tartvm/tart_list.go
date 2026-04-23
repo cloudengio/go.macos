@@ -70,7 +70,7 @@ func (e ListEntries) LookupSourceName(source, name string) (ListEntry, bool) {
 // ListAll calls "tart list --format json" and returns the entries.
 func ListAll(ctx context.Context) (ListEntries, error) {
 	stdoutBuf := bytes.NewBuffer(make([]byte, 0, 1024))
-	stderrBuf := executil.NewTailWriter((1024))
+	stderrBuf := executil.NewTailWriter(1024)
 	cmd := exec.CommandContext(ctx, "tart", "list", "--format", "json")
 	cmd.Stdout = stdoutBuf
 	cmd.Stderr = stderrBuf

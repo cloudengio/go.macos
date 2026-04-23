@@ -7,7 +7,7 @@ package tartvm_test
 // Lifecycle tests for the tart package. These tests create real VMs and walk
 // them through their state transitions. They are are configured as
 // level 1 long-running tests as per cloudeng.io/cicd and are enabled
-// by setting CLOUDENG_LONG_RUNNIN_TESTS=1 or by referring to the test
+// by setting CLOUDENG_LONG_RUNNING_TESTS=1 or by referring to the test
 // names directly.
 
 import (
@@ -58,13 +58,13 @@ func TestMain(m *testing.M) {
 	images, err := tarvm.ListAll(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tart list failed: %v; skipping tests\n", err)
-		os.Exit(1)
+		os.Exit(0)
 	}
 	for _, image := range []string{imageLinux, imageMacOS} {
 		if _, ok := images.Lookup(image); !ok {
 			fmt.Fprintf(os.Stderr, "tart image %q not found; skipping tests\n", image)
 			fmt.Fprintf(os.Stderr, "run `tart pull %s` to pull the required images before running the tests.\n", image)
-			os.Exit(1)
+			os.Exit(0)
 		}
 	}
 	code := m.Run()

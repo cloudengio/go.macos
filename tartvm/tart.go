@@ -86,10 +86,10 @@ func WithRunOptions(opts ...string) Option {
 	}
 }
 
-// WithDefaultForceStopTimeout sets the timeout for forcefully stopping a VM when
+// WithForceStopTimeout sets the timeout for forcefully stopping a VM when
 // a run operation, or other operation, fails and the error recovery needs to
 // stop the VM.
-func WithDefaultForceStopTimeout(timeout time.Duration) Option {
+func WithForceStopTimeout(timeout time.Duration) Option {
 	return func(o *options) {
 		o.forceStopTimeout = timeout
 	}
@@ -177,7 +177,7 @@ func (inst *Instance) Suspendable() bool {
 	return inst.suspendable
 }
 
-// runSyncEcxlusive runs a tart command synchronously, checking
+// runSyncExclusive runs a tart command synchronously, checking
 // that the current state allows the requested transition.
 func (inst *Instance) runSyncExclusive(ctx context.Context, action vms.Action, intermediate, target vms.State, args ...string) error {
 	if s, allowed := inst.isActionAllowed(action); !allowed {
@@ -186,7 +186,7 @@ func (inst *Instance) runSyncExclusive(ctx context.Context, action vms.Action, i
 	prev := inst.setState(intermediate)
 	inst.logger.Info("tart command issued", "args", args)
 	stdoutBuf := bytes.NewBuffer(make([]byte, 0, 1024))
-	stderrBuf := executil.NewTailWriter((1024))
+	stderrBuf := executil.NewTailWriter(1024)
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, "tart", args...)
 	cmd.Stdout = stdoutBuf
@@ -243,9 +243,17 @@ func (inst *Instance) Delete(ctx context.Context) error {
 		"delete", inst.name)
 }
 
-// Start runs "tart run <name> --no-graphics --suspendable" in the background
-// and returns immediately. Use vms.WaitForState to block until StateRunning.
+// Start runs "tart run <name> --no-graphics --suspendable" by starting the
+// tart process in the background, then blocks until tart reports the VM is
+// running, an IP address is available, and a tart exec readiness check
+// succeeds. On success, the instance transitions to StateRunning..
 func (inst *Instance) Start(ctx context.Context, stdout, stderr io.Writer) error {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
 	inst.opMutex.Lock()
 	defer inst.opMutex.Unlock()
 	if s, allowed := inst.isActionAllowed(vms.ActionStart); !allowed {
@@ -271,19 +279,21 @@ func (inst *Instance) Start(ctx context.Context, stdout, stderr io.Writer) error
 	}
 	inst.logger.Info("tart run cmd.Start called", "args", args, "pid", cmd.Process.Pid)
 
-	if err := inst.waitForTartState(ctx, "running", inst.opts.pollingInterval); err != nil {
-		return inst.runFailed(ctx, prev, cmd,
+	runCtx, cancel := context.WithTimeout(ctx, inst.opts.runTimeout)
+	defer cancel()
+	if err := inst.waitForTartState(runCtx, "running", inst.opts.pollingInterval); err != nil {
+		return inst.runFailed(runCtx, prev, cmd,
 			fmt.Errorf("tart %s: %w: failed to reach tart 'running' state", strings.Join(args, " "), err))
 	}
 
-	ip, err := inst.runIPWait(ctx)
+	ip, err := inst.runIPWait(runCtx)
 	if err != nil || ip == "" {
-		return inst.runFailed(ctx, prev, cmd,
+		return inst.runFailed(runCtx, prev, cmd,
 			fmt.Errorf("tart %s: %w: failed to get IP address", strings.Join(args, " "), err))
 	}
 
-	if err := inst.waitForReadyUsingExec(ctx); err != nil {
-		return inst.runFailed(ctx, prev, cmd,
+	if err := inst.waitForReadyUsingExec(runCtx); err != nil {
+		return inst.runFailed(runCtx, prev, cmd,
 			fmt.Errorf("tart %s: %w: failed to run tart exec", strings.Join(args, " "), err))
 	}
 
@@ -372,7 +382,7 @@ func (inst *Instance) handleStopSuspend(ctx context.Context, args ...string) (ru
 	inst.logger.Info("tart command issued", "args", args)
 	start := time.Now()
 	stdoutBuf := bytes.NewBuffer(make([]byte, 0, 1024))
-	stderrBuf := executil.NewTailWriter((1024))
+	stderrBuf := executil.NewTailWriter(1024)
 	cmd := exec.CommandContext(ctx, "tart", args...)
 	cmd.Stdout = stdoutBuf
 	cmd.Stderr = stderrBuf
@@ -513,7 +523,7 @@ func (inst *Instance) waitForReadyUsingExecOne(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, inst.opts.runTimeout)
 	defer cancel()
 	out := executil.NewTailWriter(1024)
-	now := time.Now().String()
+	now := strconv.FormatInt(time.Now().UnixNano(), 10)
 	cmd := exec.CommandContext(ctx, "tart", "exec", inst.name, "echo", now) //nolint:gosec // G204 false positive
 	cmd.Stdout = out
 	cmd.Stderr = out
