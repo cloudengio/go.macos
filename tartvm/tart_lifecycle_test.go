@@ -2,9 +2,7 @@
 // Use of this source code is governed by the Apache-2.0
 // license that can be found in the LICENSE file.
 
-//go:build darwin
-
-package tart_test
+package tarvm_test
 
 // Lifecycle tests for the tart package. These tests create real VMs and walk
 // them through their state transitions. They are skipped in CI and require
@@ -26,15 +24,15 @@ import (
 	"time"
 
 	"cloudeng.io/logging/ctxlog"
+	tarvm "cloudeng.io/macos/tartvm"
 	"cloudeng.io/vms"
-	"cloudeng.io/vms/tart"
 )
 
 // tartLookup calls "tart list --format json" and returns the entry for name,
 // or (zero, false) if the VM is not present.
-func tartLookup(ctx context.Context, t *testing.T, name string) (tart.ListEntry, bool) {
+func tartLookup(ctx context.Context, t *testing.T, name string) (tarvm.ListEntry, bool) {
 	t.Helper()
-	all, err := tart.ListAll(ctx)
+	all, err := tarvm.ListAll(ctx)
 	if err != nil {
 		t.Fatalf("tart list: %v", err)
 	}
@@ -56,7 +54,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "tart CLI not found in PATH; skipping tests")
 		os.Exit(1)
 	}
-	images, err := tart.ListAll(ctx)
+	images, err := tarvm.ListAll(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tart list failed: %v; skipping tests\n", err)
 		os.Exit(1)
@@ -69,7 +67,7 @@ func TestMain(m *testing.M) {
 		}
 	}
 	code := m.Run()
-	all, _ := tart.ListAll(ctx)
+	all, _ := tarvm.ListAll(ctx)
 	for _, entry := range all {
 		if strings.HasPrefix(entry.Name, "testlifecycle") {
 			cleanup(ctx, entry)
@@ -82,7 +80,7 @@ func run(ctx context.Context, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, "tart", args...).CombinedOutput() // #nosec G204
 }
 
-func cleanup(ctx context.Context, entry tart.ListEntry) {
+func cleanup(ctx context.Context, entry tarvm.ListEntry) {
 	if entry.State == "running" {
 		if out, err := run(ctx, "stop", entry.Name); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to stop tart VM %q: %v\nOutput: %s\n", entry.Name, err, out)
@@ -106,7 +104,7 @@ func vmName(t *testing.T) string {
 }
 
 // cleanupVM stops (if running) and deletes the VM at test teardown.
-func cleanupVM(t *testing.T, inst *tart.Instance) {
+func cleanupVM(t *testing.T, inst *tarvm.Instance) {
 	t.Helper()
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -121,12 +119,11 @@ func logStep(t *testing.T, format string, args ...any) (func(), io.Writer) {
 	t.Helper()
 	msg := fmt.Sprintf(format, args...)
 	t.Logf("→ %s", msg)
-	fmt.Printf("→ %s\n", msg)
 	start := time.Now()
 	return func() { t.Logf("  ✓ %s (%.1fs)", msg, time.Since(start).Seconds()) }, &lineWrapper{prefix: fmt.Sprintf("→→ %s", msg)}
 }
 
-func requireState(t *testing.T, inst *tart.Instance, msg string, final vms.State, intermediate ...vms.State) {
+func requireState(t *testing.T, inst *tarvm.Instance, msg string, final vms.State, intermediate ...vms.State) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -183,14 +180,16 @@ func (w *lineWrapper) Write(p []byte) (n int, err error) {
 }
 
 // runLifecle walks a VM through:
-// Initial → Clone → ReadyToRun → Run → Running → Stop → Stopped →
-// Run → Running → Stop → Stopped → Delete → Deleted
+// Initial → Clone → Stopped →
+// Start → Running → Stop → Stopped → Stop (idempotent) →
+// Start → Running → [Suspend → Suspended → Suspend (idempotent) → Start → Running →]
+// Stop → Stopped → Delete → Deleted
 func runLifecycle(t *testing.T, source string, runOptions ...string) {
 	ctx := t.Context()
 	ctx = ctxlog.WithLogger(ctx, slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})).With("test", t.Name(), "source", source))
 	name := vmName(t)
 
-	inst := tart.New(ctx, source, name, tart.WithRunOptions(runOptions...))
+	inst := tarvm.New(ctx, source, name, tarvm.WithRunOptions(runOptions...))
 	cleanupVM(t, inst)
 
 	requireState(t, inst, "initial", vms.StateInitial, vms.StateInitial)
@@ -224,6 +223,13 @@ func runLifecycle(t *testing.T, source string, runOptions ...string) {
 		vms.StateStopped,
 		vms.StateRunning, vms.StateStopping)
 
+	done, _ = logStep(t, "stop again (idempotency)")
+	runErr, stopErr = inst.Stop(ctx, time.Minute)
+	checkErr("Stop (idempotent)", runErr)
+	checkErr("Stop (idempotent)", stopErr)
+	done()
+	requireState(t, inst, "stop idempotent", vms.StateStopped)
+
 	time.Sleep(time.Second)
 	done, lr = logStep(t, "run again from stopped")
 	err = inst.Start(ctx, lr, lr)
@@ -234,7 +240,6 @@ func runLifecycle(t *testing.T, source string, runOptions ...string) {
 		vms.StateRunning, vms.StateStopped)
 
 	if inst.Suspendable() {
-
 		done, _ = logStep(t, "suspend")
 		err = inst.Suspend(ctx)
 		checkErr("Suspend", err)
@@ -242,6 +247,12 @@ func runLifecycle(t *testing.T, source string, runOptions ...string) {
 		requireState(t, inst, "suspend",
 			vms.StateSuspended,
 			vms.StateRunning, vms.StateSuspending)
+
+		done, _ = logStep(t, "suspend again (idempotency)")
+		err = inst.Suspend(ctx)
+		checkErr("Suspend (idempotent)", err)
+		done()
+		requireState(t, inst, "suspend idempotent", vms.StateSuspended)
 
 		done, lr = logStep(t, "run again from suspended")
 		err = inst.Start(ctx, lr, lr)
@@ -271,9 +282,9 @@ func runLifecycle(t *testing.T, source string, runOptions ...string) {
 }
 
 func TestLifecycleLinux(t *testing.T) {
-	runLifecycle(t, imageLinux, tart.DefaultLinuxRunOptions()...)
+	runLifecycle(t, imageLinux, tarvm.DefaultLinuxRunOptions()...)
 }
 
 func TestLifecycleMacOS(t *testing.T) {
-	runLifecycle(t, imageMacOS, tart.DefaultMacOSRunOptions()...)
+	runLifecycle(t, imageMacOS, tarvm.DefaultMacOSRunOptions()...)
 }

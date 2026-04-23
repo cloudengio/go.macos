@@ -1,16 +1,18 @@
 module cloudeng.io/macos
 
-go 1.25.5
+go 1.26.2
 
 require (
 	cloudeng.io/aws v0.0.0-20260409195307-0d32d333270c
 	cloudeng.io/cmdutil v0.0.0-20260409195307-0d32d333270c
+	cloudeng.io/errors v0.0.14-0.20260312171538-61fcde6ce278
 	cloudeng.io/file v0.0.0-20260409195307-0d32d333270c
 	cloudeng.io/linux v0.0.0-20251206055912-df09039c8e99
-	cloudeng.io/logging v0.0.0-20260409195307-0d32d333270c
-	cloudeng.io/os v0.0.0-20260409173323-3bd25554ff1b
+	cloudeng.io/logging v0.0.0-20260423002756-4c2d1fe4bcf8
+	cloudeng.io/os v0.0.0-20260423002756-4c2d1fe4bcf8
 	cloudeng.io/security v0.0.0-20260409195307-0d32d333270c
 	cloudeng.io/text v0.0.15
+	cloudeng.io/vms v0.0.0-20260423002756-4c2d1fe4bcf8
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/cloudengio/go-keychain v0.0.0-20251120230617-c4053f60cda7
 	github.com/cloudengio/keyctl v0.0.0-20251205212509-b187ca61e8c2
@@ -19,7 +21,6 @@ require (
 )
 
 require (
-	cloudeng.io/errors v0.0.14-0.20260312171538-61fcde6ce278 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.14 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.14 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 // indirect

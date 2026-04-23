@@ -2,9 +2,9 @@ name: go-macos
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 permissions:
   contents: read
@@ -13,7 +13,7 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: ["1.25.x"]
+        go-version: [ "1.26.x" ]
 
     runs-on: macos-latest
 
@@ -45,6 +45,10 @@ jobs:
           (cd cmd/keychain-plugin; go generate .)
           macos-keychain-plugin --help || true
 
+      - name: install tart
+        run: |
+          brew install tart
+
       - name: run go tests
         env:
           SKIP_KEYCHAIN_PLUGIN_TESTS: "skip"
@@ -68,4 +72,4 @@ jobs:
     with:
       runner: |
         [ "macos-latest" ]
-      go-version: "1.25.x"
+      go-version: "1.26.x"

@@ -2,10 +2,8 @@
 // Use of this source code is governed by the Apache-2.0
 // license that can be found in the LICENSE file.
 
-//go:build darwin
-
-// Package tart implements cloudeng.io/vms.Instance using the tart CLI on macOS.
-package tart
+// Package tarvm implements cloudeng.io/vms.Instance using the tart CLI on macOS.
+package tarvm
 
 import (
 	"context"
@@ -363,7 +361,7 @@ func (inst *Instance) runSyncExclusiveStopSuspend(ctx context.Context, action vm
 	}
 	prev := inst.setState(intermediate)
 	if prev == target {
-		// Already in target state, just return.
+		inst.setState(target)
 		return nil, nil
 	}
 	runErr, stopErr = inst.handleStopSuspend(ctx, args...)
