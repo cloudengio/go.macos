@@ -2,15 +2,17 @@
 // Use of this source code is governed by the Apache-2.0
 // license that can be found in the LICENSE file.
 
-package tarvm
+package tartvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"time"
 
+	"cloudeng.io/os/executil"
 	"cloudeng.io/vms"
 )
 
@@ -25,6 +27,7 @@ type ListEntry struct {
 	Running  bool
 }
 
+// VMSState maps the tart state to a vms.State.
 func (e ListEntry) VMSState() vms.State {
 	switch e.State {
 	case "running":
@@ -44,6 +47,7 @@ type ListEntries []ListEntry
 
 func (e ListEntries) Len() int { return len(e) }
 
+// Lookup returns the entry for name, or (zero, false) if the VM is not present.
 func (e ListEntries) Lookup(name string) (ListEntry, bool) {
 	for _, entry := range e {
 		if entry.Name == name {
@@ -53,6 +57,7 @@ func (e ListEntries) Lookup(name string) (ListEntry, bool) {
 	return ListEntry{}, false
 }
 
+// LookupSourceName returns the entry for source and name, or (zero, false) if the VM is not present.
 func (e ListEntries) LookupSourceName(source, name string) (ListEntry, bool) {
 	for _, entry := range e {
 		if entry.Name == name && entry.Source == source {
@@ -64,12 +69,17 @@ func (e ListEntries) LookupSourceName(source, name string) (ListEntry, bool) {
 
 // ListAll calls "tart list --format json" and returns the entries.
 func ListAll(ctx context.Context) (ListEntries, error) {
-	out, err := exec.CommandContext(ctx, "tart", "list", "--format", "json").Output()
+	stdoutBuf := bytes.NewBuffer(make([]byte, 0, 1024))
+	stderrBuf := executil.NewTailWriter((1024))
+	cmd := exec.CommandContext(ctx, "tart", "list", "--format", "json")
+	cmd.Stdout = stdoutBuf
+	cmd.Stderr = stderrBuf
+	err := cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("tart list: %w", err)
+		return nil, fmt.Errorf("tart list: %s: %w", stderrBuf.Bytes(), err)
 	}
 	var entries ListEntries
-	if err := json.Unmarshal(out, &entries); err != nil {
+	if err := json.Unmarshal(stdoutBuf.Bytes(), &entries); err != nil {
 		return nil, fmt.Errorf("failed to parse json output from tart list: %w", err)
 	}
 	return entries, nil

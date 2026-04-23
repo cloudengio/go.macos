@@ -1,5 +1,7 @@
 cloudeng.io/aws v0.0.0-20260409195307-0d32d333270c h1:/CIBGZfqsZKos04FCd4617JHS+agN+MBPaw6UwZaRWU=
 cloudeng.io/aws v0.0.0-20260409195307-0d32d333270c/go.mod h1:/LFgHF8cdmcJsMO/CV66z+XjM12rOd96dvNEe7xpW4k=
+cloudeng.io/cicd v0.0.0-20260423171305-626d3faa8103 h1:pYv8PNPdYXq+7uc7MCOPg9lU2n7ZuTBCbNkiLYpP0OM=
+cloudeng.io/cicd v0.0.0-20260423171305-626d3faa8103/go.mod h1:pI98u5ytMFakWkLK2yrVvHyRlzcyYArBYA4xKR1vPj8=
 cloudeng.io/cmdutil v0.0.0-20260409195307-0d32d333270c h1:JwV1MCh7p12YSyggj16f/wlF8dT0596LSaFJ1+EW+Wk=
 cloudeng.io/cmdutil v0.0.0-20260409195307-0d32d333270c/go.mod h1:5XVKO2B2p0Mfe8daG343w464dy/VxpOjdFVSqrqKl7c=
 cloudeng.io/errors v0.0.14-0.20260312171538-61fcde6ce278 h1:zvkZ9WBpBjerUAhl+SLCcQLar2mNdsA0kFc0Ku5NKVQ=

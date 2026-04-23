@@ -2,13 +2,13 @@
 // Use of this source code is governed by the Apache-2.0
 // license that can be found in the LICENSE file.
 
-package tarvm_test
+package tartvm_test
 
 // Lifecycle tests for the tart package. These tests create real VMs and walk
-// them through their state transitions. They are skipped in CI and require
-// tart to be installed locally. Run with a generous timeout:
-//
-//	go test -v -timeout 30m -run TestLifecycle ./tart/...
+// them through their state transitions. They are are configured as
+// level 1 long-running tests as per cloudeng.io/cicd and are enabled
+// by setting CLOUDENG_LONG_RUNNIN_TESTS=1 or by referring to the test
+// names directly.
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"cloudeng.io/cicd"
 	"cloudeng.io/logging/ctxlog"
 	tarvm "cloudeng.io/macos/tartvm"
 	"cloudeng.io/vms"
@@ -179,7 +180,7 @@ func (w *lineWrapper) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// runLifecle walks a VM through:
+// runLifecycle walks a VM through:
 // Initial → Clone → Stopped →
 // Start → Running → Stop → Stopped → Stop (idempotent) →
 // Start → Running → [Suspend → Suspended → Suspend (idempotent) → Start → Running →]
@@ -282,9 +283,45 @@ func runLifecycle(t *testing.T, source string, runOptions ...string) {
 }
 
 func TestLifecycleLinux(t *testing.T) {
+	cicd.LongRunningTest(t, 1)
 	runLifecycle(t, imageLinux, tarvm.DefaultLinuxRunOptions()...)
 }
 
 func TestLifecycleMacOS(t *testing.T) {
+	cicd.LongRunningTest(t, 1)
 	runLifecycle(t, imageMacOS, tarvm.DefaultMacOSRunOptions()...)
+}
+
+// TestExecLinux verifies Exec runs commands inside a running Linux VM,
+// captures stdout correctly, and returns an error for non-zero exit codes.
+func TestExecLinux(t *testing.T) {
+	cicd.LongRunningTest(t, 1)
+	ctx := t.Context()
+	inst := tarvm.New(ctx, imageLinux, vmName(t), tarvm.WithRunOptions(tarvm.DefaultLinuxRunOptions()...))
+	cleanupVM(t, inst)
+
+	// Exec must fail before the VM is running.
+	if err := inst.Exec(ctx, io.Discard, io.Discard, "echo", "hello"); err == nil {
+		t.Fatal("Exec on Initial VM: expected error, got nil")
+	}
+
+	if err := inst.Clone(ctx); err != nil {
+		t.Fatalf("Clone: %v", err)
+	}
+	if err := inst.Start(ctx, io.Discard, io.Discard); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	var out strings.Builder
+	if err := inst.Exec(ctx, &out, io.Discard, "echo", "hello from tart"); err != nil {
+		t.Fatalf("Exec echo: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != "hello from tart" {
+		t.Errorf("Exec echo: got %q, want %q", got, "hello from tart")
+	}
+
+	// A failing command must return a non-nil error.
+	if err := inst.Exec(ctx, io.Discard, io.Discard, "false"); err == nil {
+		t.Error("Exec false: expected non-zero exit error, got nil")
+	}
 }

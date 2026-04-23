@@ -2,7 +2,7 @@
 // Use of this source code is governed by the Apache-2.0
 // license that can be found in the LICENSE file.
 
-package tarvm_test
+package tartvm_test
 
 import (
 	"io"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"cloudeng.io/cicd"
 	tarvm "cloudeng.io/macos/tartvm"
 )
 
@@ -58,12 +59,14 @@ func TestInvalidOpsFromStopped(t *testing.T) {
 // TestInvalidOpsFromRunningLinux starts a Linux VM and verifies that Clone,
 // Start, and Delete are rejected from Running state.
 func TestInvalidOpsFromRunningLinux(t *testing.T) {
+	cicd.LongRunningTest(t, 1)
 	testInvalidOpsFromRunning(t, imageLinux, tarvm.DefaultLinuxRunOptions()...)
 }
 
 // TestInvalidOpsFromRunningMacOS starts a macOS VM and verifies that Clone,
 // Start, and Delete are rejected from Running state.
 func TestInvalidOpsFromRunningMacOS(t *testing.T) {
+	cicd.LongRunningTest(t, 1)
 	testInvalidOpsFromRunning(t, imageMacOS, tarvm.DefaultMacOSRunOptions()...)
 }
 
@@ -88,6 +91,7 @@ func testInvalidOpsFromRunning(t *testing.T, image string, runOptions ...string)
 // TestInvalidOpsFromSuspendedMacOS suspends a macOS VM and verifies that Stop
 // and Clone are rejected from Suspended state.
 func TestInvalidOpsFromSuspendedMacOS(t *testing.T) {
+	cicd.LongRunningTest(t, 1)
 	ctx := t.Context()
 	inst := tarvm.New(ctx, imageMacOS, vmName(t), tarvm.WithRunOptions(tarvm.DefaultMacOSRunOptions()...))
 	cleanupVM(t, inst)

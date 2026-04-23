@@ -2,15 +2,17 @@
 // Use of this source code is governed by the Apache-2.0
 // license that can be found in the LICENSE file.
 
-// Package tarvm implements cloudeng.io/vms.Instance using the tart CLI on macOS.
-package tarvm
+// Package tartvm implements cloudeng.io/vms.Instance using the tart CLI on macOS.
+package tartvm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -76,7 +78,7 @@ func WithRunTimeout(timeout time.Duration) Option {
 }
 
 // WithRunOptions sets additional options to pass to the "tart run" command.
-// The default is the vale returned by DefaultRunOptions.
+// The default is the value returned by DefaultRunOptions.
 func WithRunOptions(opts ...string) Option {
 	return func(o *options) {
 		o.runOptions = append(o.runOptions, opts...)
@@ -99,7 +101,7 @@ const (
 	DefaultForceStopTimeout = 2 * time.Second
 )
 
-// DefaultRunOptios are safe defaults that work with mac and linux tart VMs.
+// DefaultRunOptions are safe defaults that work with mac and linux tart VMs.
 // Linux does not currently support suspend.
 func DefaultRunOptions() []string {
 	return slices.Clone([]string{"--no-graphics", "--no-audio"})
@@ -113,11 +115,14 @@ func DefaultLinuxRunOptions() []string {
 	return DefaultRunOptions()
 }
 
-func newInstance(ctx context.Context, source, name string, opts ...Option) *Instance {
+// New returns an Instance in StateInitial, source is the tart image or OCI
+// reference to clone from; name is the local VM name.
+func New(ctx context.Context, source, name string, opts ...Option) *Instance {
 	options := options{
-		//sshUser:         DefaultSSHUser,
-		pollingInterval: DefaultPollingInterval,
-		runTimeout:      DefaultRunTimeout,
+		pollingInterval:  DefaultPollingInterval,
+		runTimeout:       DefaultRunTimeout,
+		forceStopTimeout: DefaultForceStopTimeout,
+		outputBufSize:    DefaultOutputBufferSize,
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -134,12 +139,6 @@ func newInstance(ctx context.Context, source, name string, opts ...Option) *Inst
 		logger:      logger,
 		suspendable: slices.Contains(options.runOptions, "--suspendable"),
 	}
-}
-
-// New returns an Instance in StateInitial, source is the tart image or OCI
-// reference to clone from; name is the local VM name.
-func New(ctx context.Context, source, name string, opts ...Option) *Instance {
-	return newInstance(ctx, source, name, opts...)
 }
 
 // Name returns the local VM name.
@@ -177,46 +176,70 @@ func (inst *Instance) Suspendable() bool {
 	return inst.suspendable
 }
 
-// runSyncExlusive runs a tart command synchronously, checking
+// runSyncEcxlusive runs a tart command synchronously, checking
 // that the current state allows the requested transition.
-func (inst *Instance) runSyncExclusive(ctx context.Context, action vms.Action, intermediate, target vms.State, args ...string) ([]byte, error) {
+func (inst *Instance) runSyncExclusive(ctx context.Context, action vms.Action, intermediate, target vms.State, args ...string) error {
 	if s, allowed := inst.isActionAllowed(action); !allowed {
-		return nil, fmt.Errorf("action %s not allowed in state %s", action, s)
+		return fmt.Errorf("action %s not allowed in state %s", action, s)
 	}
 	prev := inst.setState(intermediate)
 	inst.logger.Info("tart command issued", "args", args)
+	stdoutBuf := bytes.NewBuffer(make([]byte, 0, 1024))
+	stderrBuf := executil.NewTailWriter((1024))
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, "tart", args...)
-	out, err := cmd.CombinedOutput()
-	inst.logger.Info("tart command completed", "args", args, "output", string(out), "error", err, "duration", time.Since(start).String())
+	cmd.Stdout = stdoutBuf
+	cmd.Stderr = stderrBuf
+	err := cmd.Run()
+	inst.logger.Info("tart command completed", "args", args, "stderr", string(stderrBuf.Bytes()), "error", err, "duration", time.Since(start).String())
 	if err != nil {
 		inst.setState(prev)
-		return out, fmt.Errorf("tart %s: %s: %w", strings.Join(args, " "), out, err)
+		return convertError(args, string(stderrBuf.Bytes()), err)
 	}
 	inst.setState(target)
-	return out, nil
+	return nil
 }
 
-// Clone runs "tart clone <source> <name>" and transitions to 	StateReadyToRun.
+var (
+	reVMNotExist   = regexp.MustCompile(`the specified VM "[^"]+" does not exist`)
+	reVMNotRunning = regexp.MustCompile(`VM "[^"]+" is not running`)
+)
+
+func isAlreadyStoppedErrorMsg(stderr string) bool {
+	return reVMNotRunning.MatchString(stderr)
+}
+
+func convertError(args []string, stderr string, err error) error {
+	cl := strings.Join(args, " ")
+	if reVMNotExist.MatchString(stderr) {
+		return fmt.Errorf("tart %s: VM does not exist: %s: %v: %w", cl, stderr, err, vms.ErrVMNotFound)
+	}
+	if isAlreadyStoppedErrorMsg(stderr) {
+		return fmt.Errorf("tart %s: VM is not running: %s: %v: %w", cl, stderr, err, vms.ErrVMNotRunning)
+	}
+	return fmt.Errorf("tart %s: %s: %w", cl, stderr, err)
+}
+
+// Clone runs "tart clone <source> <name>" and transitions to StateReadyToRun.
 func (inst *Instance) Clone(ctx context.Context) error {
 	inst.opMutex.Lock()
 	defer inst.opMutex.Unlock()
-	_, err := inst.runSyncExclusive(ctx,
+	return inst.runSyncExclusive(ctx,
 		vms.ActionClone,  // action
 		vms.StateCloning, // intermediate state
 		vms.StateStopped, // target state
 		"clone", inst.source, inst.name)
-	return err
 }
 
 // Delete runs "tart delete <name>" and transitions to StateDeleted.
 func (inst *Instance) Delete(ctx context.Context) error {
-	_, err := inst.runSyncExclusive(ctx,
+	inst.opMutex.Lock()
+	defer inst.opMutex.Unlock()
+	return inst.runSyncExclusive(ctx,
 		vms.ActionDelete,
 		vms.StateDeleting,
 		vms.StateDeleted,
 		"delete", inst.name)
-	return err
 }
 
 // Start runs "tart run <name> --no-graphics --suspendable" in the background
@@ -274,17 +297,17 @@ func (inst *Instance) Start(ctx context.Context, stdout, stderr io.Writer) error
 func (inst *Instance) runForceStop(ctx context.Context, timeout time.Duration) error {
 	out, err := exec.CommandContext(ctx, "tart", "stop", inst.name, "--timeout", strconv.Itoa(int(timeout.Seconds()))).CombinedOutput()
 	if err != nil {
-		if inst.isAlreadyStoppedErrorMsg(string(out)) {
+		if isAlreadyStoppedErrorMsg(string(out)) {
 			return nil
 		}
-		return fmt.Errorf("tart stop --timeout %d: %w", timeout, err)
+		return fmt.Errorf("tart stop --timeout %v: %w", timeout, err)
 	}
 	return nil
 }
 
 // opMutex must be held by the caller.
 func (inst *Instance) cmdStartFailed(ctx context.Context, prevState vms.State, prevErr error) error {
-	if err := inst.waitForTartState(ctx, "stopped", inst.opts.runTimeout); err != nil {
+	if err := inst.waitForTartState(ctx, "stopped", inst.opts.pollingInterval); err != nil {
 		var errs errors.M
 		errs.Append(prevErr)
 		errs.Append(err)
@@ -307,7 +330,7 @@ func (inst *Instance) runFailed(ctx context.Context, prevState vms.State, cmd *e
 	if err := cmd.Wait(); err != nil {
 		errs.Append(err)
 	}
-	if err := inst.waitForTartState(ctx, "stopped", inst.opts.runTimeout); err != nil {
+	if err := inst.waitForTartState(ctx, "stopped", inst.opts.pollingInterval); err != nil {
 		errs.Append(err)
 		inst.setState(vms.StateErrorUnknown)
 		inst.logger.Error("tart run failure: revert to StateErrorUnknown", "error", errs.Err())
@@ -324,15 +347,16 @@ func (inst *Instance) clearIP() {
 	inst.currentIP = ""
 }
 
-func (inst *Instance) isAlreadyStoppedErrorMsg(out string) bool {
-	return strings.Contains(out, fmt.Sprintf("VM %q is not running", inst.name))
-}
-
 func (inst *Instance) verifyState(ctx context.Context, state string) bool {
 	return inst.waitForTartState(ctx, state, inst.opts.pollingInterval) == nil
 }
 
 func (inst *Instance) handleStopSuspend(ctx context.Context, args ...string) (runErr, stopErr error) {
+	if inst.asyncWait == nil {
+		// should never be reached since the state machine prevents stop/suspend from being called in a state where
+		// asyncWait would be nil, but just in case, return an error instead of panicking.
+		return nil, fmt.Errorf("missing asyncWait for running instance")
+	}
 	exited, err := inst.asyncWait.WaitDone()
 	if exited {
 		if err != nil {
@@ -342,20 +366,25 @@ func (inst *Instance) handleStopSuspend(ctx context.Context, args ...string) (ru
 	}
 	inst.logger.Info("tart command issued", "args", args)
 	start := time.Now()
+	stdoutBuf := bytes.NewBuffer(make([]byte, 0, 1024))
+	stderrBuf := executil.NewTailWriter((1024))
 	cmd := exec.CommandContext(ctx, "tart", args...)
-	out, err := cmd.CombinedOutput()
-	inst.logger.Info("tart command completed", "args", args, "output", string(out), "error", err, "duration", time.Since(start).String())
+	cmd.Stdout = stdoutBuf
+	cmd.Stderr = stderrBuf
+	err = cmd.Run()
+	stderr := string(stderrBuf.Bytes())
+	inst.logger.Info("tart command completed", "args", args, "stderr", stderr, "error", err, "duration", time.Since(start).String())
 	if err != nil {
-		if inst.isAlreadyStoppedErrorMsg(string(out)) {
+		if isAlreadyStoppedErrorMsg(stderr) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("tart %s: %s: %w", strings.Join(args, " "), out, err)
+		return nil, convertError(args, stderr, err)
 	}
 	runErr = inst.asyncWait.Wait()
 	return runErr, nil
 }
 
-func (inst *Instance) runSyncExclusiveStopSuspend(ctx context.Context, action vms.Action, intermediate, target vms.State, tartState string, args ...string) (runErr, stopErr error) {
+func (inst *Instance) runSyncExclusiveStopSuspend(ctx context.Context, action vms.Action, intermediate, target vms.State, tartState string, args ...string) (runErr, stopSuspendErr error) {
 	if s, allowed := inst.isActionAllowed(action); !allowed {
 		return nil, fmt.Errorf("action %s not allowed in state %s", action, s)
 	}
@@ -364,16 +393,16 @@ func (inst *Instance) runSyncExclusiveStopSuspend(ctx context.Context, action vm
 		inst.setState(target)
 		return nil, nil
 	}
-	runErr, stopErr = inst.handleStopSuspend(ctx, args...)
+	runErr, stopSuspendErr = inst.handleStopSuspend(ctx, args...)
 	if inst.verifyState(ctx, tartState) {
 		// stopped, return any errors, but the state is ok.
-		inst.logger.Info("stop/suspend command completed, vm is stopped", "args", args, "runErr", runErr, "stopErr", stopErr)
+		inst.logger.Info("stop/suspend command completed, vm is stopped", "args", args, "runErr", runErr, "stopSuspendErr", stopSuspendErr)
 		inst.setState(target)
 		return runErr, nil
 	}
-	inst.logger.Warn("stop/suspend command completed, vm is NOT stopped", "args", args, "runErr", runErr, "stopErr", stopErr)
+	inst.logger.Warn("stop/suspend command completed, vm is NOT stopped", "args", args, "runErr", runErr, "stopSuspendErr", stopSuspendErr)
 	inst.setState(vms.StateErrorUnknown)
-	return runErr, stopErr
+	return runErr, stopSuspendErr
 }
 
 func (inst *Instance) Stop(ctx context.Context, timeout time.Duration) (runErr, stopErr error) {
@@ -483,7 +512,7 @@ func (inst *Instance) waitForReadyUsingExecOne(ctx context.Context) error {
 		return fmt.Errorf("tart exec: %s\n%w", out.Bytes(), err)
 	}
 	read := strings.TrimSpace(string(out.Bytes()))
-	if string(read) != now {
+	if read != now {
 		return fmt.Errorf("tart exec: output does not contain expected string: %s != %s", string(read), now)
 	}
 	return nil

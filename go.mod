@@ -21,6 +21,7 @@ require (
 )
 
 require (
+	cloudeng.io/cicd v0.0.0-20260423171305-626d3faa8103 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.14 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.14 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 // indirect
