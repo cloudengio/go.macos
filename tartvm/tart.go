@@ -496,46 +496,31 @@ func (inst *Instance) Exec(ctx context.Context, stdout, stderr io.Writer, cmd st
 }
 
 func (inst *Instance) waitForReadyUsingExec(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, inst.opts.runTimeout)
-	defer cancel()
-	err := inst.waitForReadyUsingExecOne(ctx)
-	if err == nil {
-		return nil
+	found := func(ctx context.Context) (bool, error) {
+		return waitForReadyUsingExecOne(ctx, inst.logger, inst.name, inst.opts.runTimeout)
 	}
-	inst.logger.Info("tart run: tart exec failed, retrying", "error", err)
-	ticker := time.NewTicker(inst.opts.pollingInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			err := inst.waitForReadyUsingExecOne(ctx)
-			if err == nil {
-				return nil
-			}
-			inst.logger.Info("tart run: tart exec failed, retrying", "error", err)
-		}
-	}
+	return executil.WaitFor(ctx, inst.opts.pollingInterval, found)
 }
 
-func (inst *Instance) waitForReadyUsingExecOne(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, inst.opts.runTimeout)
+func waitForReadyUsingExecOne(ctx context.Context, logger *slog.Logger, name string, timeout time.Duration) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	out := executil.NewTailWriter(1024)
 	now := strconv.FormatInt(time.Now().UnixNano(), 10)
-	cmd := exec.CommandContext(ctx, "tart", "exec", inst.name, "echo", now) //nolint:gosec // G204 false positive
+	cmd := exec.CommandContext(ctx, "tart", "exec", name, "echo", now) //nolint:gosec // G204 false positive
 	cmd.Stdout = out
 	cmd.Stderr = out
 	cmd.Stdin = nil // Detach stdin entirely
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("tart exec: %s\n%w", out.Bytes(), err)
+		logger.Info("tart exec failed", "name", name, "error", err, "output", string(out.Bytes()))
+		return false, fmt.Errorf("tart exec: %s\n%w", out.Bytes(), err)
 	}
 	read := strings.TrimSpace(string(out.Bytes()))
 	if read != now {
-		return fmt.Errorf("tart exec: output does not contain expected string: %s != %s", read, now)
+		logger.Info("tart exec output mismatch", "name", name, "expected", now, "got", read)
+		return true, fmt.Errorf("tart exec: output does not contain expected string: %s != %s", read, now)
 	}
-	return nil
+	return true, nil
 }
 
 func (inst *Instance) runIPWait(ctx context.Context) (string, error) {
@@ -548,33 +533,21 @@ func (inst *Instance) runIPWait(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func (inst *Instance) getStateUsingList(ctx context.Context, state string) (bool, error) {
+func getStateUsingList(ctx context.Context, name, state string) (bool, error) {
 	all, err := ListAll(ctx)
 	if err != nil {
 		return true, fmt.Errorf("failed to list tart VMs: %w", err)
 	}
-	entry, found := all.Lookup(inst.name)
+	entry, found := all.Lookup(name)
 	if !found {
-		return true, fmt.Errorf("tart list: VM %q not found", inst.name)
+		return true, fmt.Errorf("tart list: VM %q not found", name)
 	}
 	return entry.State == state, nil
 }
 
 func (inst *Instance) waitForTartState(ctx context.Context, state string, interval time.Duration) error {
-	inst.logger.Info("waiting for tart state", "state", state)
-	if done, err := inst.getStateUsingList(ctx, state); done {
-		return err
+	found := func(ctx context.Context) (bool, error) {
+		return getStateUsingList(ctx, inst.name, state)
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if done, err := inst.getStateUsingList(ctx, state); done {
-				return err
-			}
-		}
-	}
+	return executil.WaitFor(ctx, interval, found)
 }

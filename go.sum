@@ -14,10 +14,14 @@ cloudeng.io/logging v0.0.0-20260423002756-4c2d1fe4bcf8 h1:6Tw8j0uFAYPDldnqvEP2t8
 cloudeng.io/logging v0.0.0-20260423002756-4c2d1fe4bcf8/go.mod h1:1srNtLRpQsIoLck/p/JmvR/QfwfPbDO/65orqtdh1N0=
 cloudeng.io/logging v0.0.0-20260423190947-81385993b155 h1:O9csEqpGqwNxEWi6x0UPKh0tjrClo7SNLi5VkkKUMbw=
 cloudeng.io/logging v0.0.0-20260423190947-81385993b155/go.mod h1:1srNtLRpQsIoLck/p/JmvR/QfwfPbDO/65orqtdh1N0=
+cloudeng.io/logging v0.0.0-20260424002940-830ef619d827 h1:TJ5idqeS/3VCkm4jgcc5A3tvy7mWRB/L9osbEprrVN8=
+cloudeng.io/logging v0.0.0-20260424002940-830ef619d827/go.mod h1:1srNtLRpQsIoLck/p/JmvR/QfwfPbDO/65orqtdh1N0=
 cloudeng.io/os v0.0.0-20260423002756-4c2d1fe4bcf8 h1:YT+mDCUchRgPZej5dPgnOYuqMrqg+RN3x8r14/pQxU4=
 cloudeng.io/os v0.0.0-20260423002756-4c2d1fe4bcf8/go.mod h1:dZoonPQBJ1Us4CJmrJTnOnVNMI/ZGRPtkXSghw3kO4c=
 cloudeng.io/os v0.0.0-20260423190947-81385993b155 h1:csqOaBCr/fNiDGFmIhCMxV7gatiRCqInCo7yQxm0q4o=
 cloudeng.io/os v0.0.0-20260423190947-81385993b155/go.mod h1:dZoonPQBJ1Us4CJmrJTnOnVNMI/ZGRPtkXSghw3kO4c=
+cloudeng.io/os v0.0.0-20260424002940-830ef619d827 h1:D0OlUHv9ENoEZIeA1eiMDugtrWEVfoBU7W3sNcB5Td4=
+cloudeng.io/os v0.0.0-20260424002940-830ef619d827/go.mod h1:dZoonPQBJ1Us4CJmrJTnOnVNMI/ZGRPtkXSghw3kO4c=
 cloudeng.io/security v0.0.0-20260409195307-0d32d333270c h1:hlPrtBWK1CY7bcWrjaMzNbvB+I2JuRPToKFvREM3DrU=
 cloudeng.io/security v0.0.0-20260409195307-0d32d333270c/go.mod h1:WiLGafPvKkG9jnDCAry8TCvLpf8k/VTrGlfcQWLIYLY=
 cloudeng.io/text v0.0.15 h1:1ijxRX4LVNQNOLgayMH7YoUssH8RY0TgKxIG++JiOVE=
@@ -28,6 +32,8 @@ cloudeng.io/vms v0.0.0-20260423171305-626d3faa8103 h1:9acC72prDiFwjnr7uqcNcUH5cG
 cloudeng.io/vms v0.0.0-20260423171305-626d3faa8103/go.mod h1:AbMv6UrNhE13mM9kCzCJtitALzgmS6EgENggouVq1z0=
 cloudeng.io/vms v0.0.0-20260423190947-81385993b155 h1:wRfYO+tk6fIdHA4+/qS9eyK0UY8Vt7mHADneONS0rco=
 cloudeng.io/vms v0.0.0-20260423190947-81385993b155/go.mod h1:AbMv6UrNhE13mM9kCzCJtitALzgmS6EgENggouVq1z0=
+cloudeng.io/vms v0.0.0-20260424002940-830ef619d827 h1:aqDptfcL0de4sNX/1NfohM2YHdrUyJEUv9WebBfXh9g=
+cloudeng.io/vms v0.0.0-20260424002940-830ef619d827/go.mod h1:AbMv6UrNhE13mM9kCzCJtitALzgmS6EgENggouVq1z0=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/aws/aws-sdk-go-v2 v1.41.6 h1:1AX0AthnBQzMx1vbmir3Y4WsnJgiydmnJjiLu+LvXOg=
