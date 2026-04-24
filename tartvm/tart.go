@@ -497,12 +497,12 @@ func (inst *Instance) Exec(ctx context.Context, stdout, stderr io.Writer, cmd st
 
 func (inst *Instance) waitForReadyUsingExec(ctx context.Context) error {
 	found := func(ctx context.Context) (bool, error) {
-		return waitForReadyUsingExecOne(ctx, inst.name, inst.opts.runTimeout)
+		return waitForReadyUsingExecOne(ctx, inst.logger, inst.name, inst.opts.runTimeout)
 	}
 	return executil.WaitFor(ctx, inst.opts.pollingInterval, found)
 }
 
-func waitForReadyUsingExecOne(ctx context.Context, name string, timeout time.Duration) (bool, error) {
+func waitForReadyUsingExecOne(ctx context.Context, logger *slog.Logger, name string, timeout time.Duration) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	out := executil.NewTailWriter(1024)
@@ -512,10 +512,12 @@ func waitForReadyUsingExecOne(ctx context.Context, name string, timeout time.Dur
 	cmd.Stderr = out
 	cmd.Stdin = nil // Detach stdin entirely
 	if err := cmd.Run(); err != nil {
+		logger.Info("tart exec failed", "name", name, "error", err, "output", string(out.Bytes()))
 		return false, fmt.Errorf("tart exec: %s\n%w", out.Bytes(), err)
 	}
 	read := strings.TrimSpace(string(out.Bytes()))
 	if read != now {
+		logger.Info("tart exec output mismatch", "name", name, "expected", now, "got", read)
 		return true, fmt.Errorf("tart exec: output does not contain expected string: %s != %s", read, now)
 	}
 	return true, nil
