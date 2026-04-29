@@ -157,47 +157,52 @@ func LookupPluginBinary(appBundle, binary string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to find plugin binary in PATH: %v", err)
 	}
-	fi, err = os.Stat(path)
-	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
-		return path, nil
-	}
-	return "", fmt.Errorf("failed to find plugin binary in PATH: %v", err)
+	return path, nil
 }
 
 // Config returns a Config based on the KeychainFlags.
 // It provides a default value for the plugin binary if one is not specified
-// in the flags and a default account of os.Getenv("USER") if no account
-// is specified.
-func (f KeychainFlags) pluginConfig() Config {
-	f.Binary, _ = LookupPluginBinary(f.UseApp, f.Binary)
+// in the flags. It also provides a default account of os.Getenv("USER") if
+func (f KeychainFlags) pluginConfig() (Config, error) {
+	// no account is specified.
+	binary, err := LookupPluginBinary(f.UseApp, f.Binary)
+	if err != nil {
+		return Config{}, err
+	}
 	account := f.Account
 	if account == "" {
 		account = os.Getenv("USER")
 	}
 	return Config{
-		Binary:  f.Binary,
+		Binary:  binary,
 		Account: account,
+	}, nil
+}
+
+func (f ReadFlags) Config() (Config, error) {
+	c, err := f.pluginConfig()
+	if err != nil {
+		return Config{}, err
 	}
-}
-
-func (f ReadFlags) Config() Config {
-	c := f.pluginConfig()
 	c.Type = keychain.Type(f.Type)
-	return c
+	return c, nil
 }
 
-func (f WriteFlags) Config() Config {
-	cfg := f.pluginConfig()
+func (f WriteFlags) Config() (Config, error) {
+	cfg, err := f.pluginConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	cfg.Type = keychain.Type(f.Type)
 	cfg.UpdateInPlace = f.UpdateInPlace
 	cfg.Accessibility = keychain.Accessibility(f.Accessibility)
-	return cfg
+	return cfg, nil
 }
 
 // DefaultConfigForReading returns a Config with default values
 // suitable for reading from the keychain.
 func DefaultConfigForReading() Config {
-	cfg := KeychainFlags{}.pluginConfig()
+	cfg, _ := KeychainFlags{}.pluginConfig()
 	cfg.Type = keychain.KeychainAll
 	return cfg
 }
@@ -219,7 +224,7 @@ func (pc Config) FS() *plugins.FS {
 	return plugins.NewFS(binary, pc)
 }
 
-// Server provides of a plugin for handling plugin requests to access
+// Server provides a plugin for handling plugin requests to access
 // the macos keychain. A plugin binary can use this to handle requests
 // and return responses.
 type Server struct {

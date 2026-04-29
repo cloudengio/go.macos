@@ -131,7 +131,7 @@ ReadFlags are used for reading from the keychain plugin.
 ### Methods
 
 ```go
-func (f ReadFlags) Config() Config
+func (f ReadFlags) Config() (Config, error)
 ```
 
 
@@ -164,8 +164,8 @@ type Server struct {
 	// contains filtered or unexported fields
 }
 ```
-Server provides of a plugin for handling plugin requests to access the
-macos keychain. A plugin binary can use this to handle requests and return
+Server provides a plugin for handling plugin requests to access the macos
+keychain. A plugin binary can use this to handle requests and return
 responses.
 
 ### Functions
@@ -219,7 +219,7 @@ WriteFlags are used for writing to the keychain plugin.
 ### Methods
 
 ```go
-func (f WriteFlags) Config() Config
+func (f WriteFlags) Config() (Config, error)
 ```
 
 
