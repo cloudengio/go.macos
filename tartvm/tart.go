@@ -152,7 +152,7 @@ func New(ctx context.Context, source, name string, opts ...Option) *Instance {
 	}
 }
 
-// Name returns the local VM name.
+// ID returns the local VM's ID/name.
 func (inst *Instance) ID() string { return inst.name }
 
 func (inst *Instance) setState(state vms.State) vms.State {

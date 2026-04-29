@@ -41,23 +41,6 @@ func TestInvalidOpsFromInitial(t *testing.T) {
 	assertActionError(t, inst.Delete(ctx), "Delete", "Initial")
 }
 
-/*
-// TestInvalidOpsFromStopped clones a VM and verifies that Suspend and Clone are
-// rejected from Stopped state. Both errors fire before tart is called.
-func TestInvalidOpsFromStopped(t *testing.T) {
-	ctx := t.Context()
-	inst := tartvm.New(ctx, imageLinux, vmName(t), tartvm.WithRunOptions(tartvm.DefaultLinuxRunOptions()...))
-	cleanupVM(t, inst)
-
-	if err := inst.Clone(ctx); err != nil {
-		t.Fatalf("Clone: %v", err)
-	}
-
-	assertActionError(t, inst.Suspend(ctx), "Suspend", "Stopped")
-	assertActionError(t, inst.Clone(ctx), "Clone", "Stopped")
-}
-*/
-
 // TestInvalidOpsFromRunningLinux starts a Linux VM and verifies that Clone,
 // Start, and Delete are rejected from Running state.
 func TestInvalidOpsFromRunningLinux(t *testing.T) {
