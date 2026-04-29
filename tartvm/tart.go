@@ -58,6 +58,7 @@ type options struct {
 	runTimeout       time.Duration
 	forceStopTimeout time.Duration
 	runOptions       []string
+	logger           *slog.Logger
 }
 
 // WithPollingInterval sets the interval to use for polling the
@@ -92,6 +93,13 @@ func WithRunOptions(opts ...string) Option {
 func WithForceStopTimeout(timeout time.Duration) Option {
 	return func(o *options) {
 		o.forceStopTimeout = timeout
+	}
+}
+
+// WithLogger sets a logger to use for logging tart commands and state transitions.
+func WithLogger(logger *slog.Logger) Option {
+	return func(o *options) {
+		o.logger = logger
 	}
 }
 
@@ -131,19 +139,21 @@ func New(ctx context.Context, source, name string, opts ...Option) *Instance {
 	if len(options.runOptions) == 0 {
 		options.runOptions = DefaultRunOptions()
 	}
-	logger := ctxlog.Logger(ctx).With("module", "tart", "source", source, "name", name)
+	if options.logger == nil {
+		options.logger = ctxlog.Logger(ctx).With("module", "tart", "source", source, "name", name)
+	}
 	return &Instance{
 		source:      source,
 		name:        name,
 		state:       vms.StateInitial,
 		opts:        options,
-		logger:      logger,
+		logger:      options.logger,
 		suspendable: slices.Contains(options.runOptions, "--suspendable"),
 	}
 }
 
-// Name returns the local VM name.
-func (inst *Instance) Name() string { return inst.name }
+// ID returns the local VM's ID/name.
+func (inst *Instance) ID() string { return inst.name }
 
 func (inst *Instance) setState(state vms.State) vms.State {
 	inst.stateMu.Lock()
@@ -213,12 +223,12 @@ func isAlreadyStoppedErrorMsg(stderr string) bool {
 func convertError(args []string, stderr string, err error) error {
 	cl := strings.Join(args, " ")
 	if reVMNotExist.MatchString(stderr) {
-		return fmt.Errorf("tart %s: VM does not exist: %s: %v: %w", cl, stderr, err, vms.ErrVMNotFound)
+		return fmt.Errorf("%s: VM does not exist: %s: %v: %w", cl, stderr, err, vms.ErrVMNotFound)
 	}
 	if isAlreadyStoppedErrorMsg(stderr) {
-		return fmt.Errorf("tart %s: VM is not running: %s: %v: %w", cl, stderr, err, vms.ErrVMNotRunning)
+		return fmt.Errorf("%s: VM is not running: %s: %v: %w", cl, stderr, err, vms.ErrVMNotRunning)
 	}
-	return fmt.Errorf("tart %s: %s: %w", cl, stderr, err)
+	return fmt.Errorf("%s: %s: %w", cl, stderr, err)
 }
 
 // Clone runs "tart clone <source> <name>" and transitions to StateReadyToRun.
@@ -464,18 +474,12 @@ func (inst *Instance) Suspend(ctx context.Context) error {
 	return suspErr
 }
 
-// Properties returns VM properties. It calls "tart ip" to obtain the IP
-// address and returns SSH connection arguments for the default admin user.
-func (inst *Instance) Properties(ctx context.Context) (vms.Properties, error) {
-	if state := inst.State(ctx); state != vms.StateRunning {
-		return vms.Properties{}, fmt.Errorf("properties only available for running VMs, current state: %s", state)
-	}
+// Properties returns VM properties. If the VM is running, it returns the IP address.
+func (inst *Instance) Properties(context.Context) (vms.Properties, error) {
 	ip := inst.getIP()
-	if ip == "" {
-		return vms.Properties{}, fmt.Errorf("tart ip %s: no IP address available", inst.name)
-	}
 	return vms.Properties{
-		IP: ip,
+		IP:        ip,
+		CloneInfo: CloneInfo{Source: inst.source, Name: inst.name},
 	}, nil
 }
 
@@ -550,4 +554,13 @@ func (inst *Instance) waitForTartState(ctx context.Context, state string, interv
 		return getStateUsingList(ctx, inst.name, state)
 	}
 	return executil.WaitFor(ctx, interval, found)
+}
+
+type CloneInfo struct {
+	Source string
+	Name   string
+}
+
+func (c CloneInfo) String() string {
+	return fmt.Sprintf("source=%s name=%s", c.Source, c.Name)
 }

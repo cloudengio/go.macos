@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"cloudeng.io/cicd"
-	tarvm "cloudeng.io/macos/tartvm"
+	tartvm "cloudeng.io/macos/tartvm"
 )
 
 // assertActionError checks that err is non-nil and contains
@@ -31,7 +31,7 @@ func assertActionError(t *testing.T, err error, action, state string) {
 // all rejected before any tart call is made — pure state-machine validation.
 func TestInvalidOpsFromInitial(t *testing.T) {
 	ctx := t.Context()
-	inst := tarvm.New(ctx, "dummy-source", "dummy-name")
+	inst := tartvm.New(ctx, "dummy-source", "dummy-name")
 
 	_, stopErr := inst.Stop(ctx, time.Minute)
 	assertActionError(t, stopErr, "Stop", "Initial")
@@ -41,11 +41,24 @@ func TestInvalidOpsFromInitial(t *testing.T) {
 	assertActionError(t, inst.Delete(ctx), "Delete", "Initial")
 }
 
-// TestInvalidOpsFromStopped clones a VM and verifies that Suspend and Clone are
-// rejected from Stopped state. Both errors fire before tart is called.
-func TestInvalidOpsFromStopped(t *testing.T) {
+// TestInvalidOpsFromRunningLinux starts a Linux VM and verifies that Clone,
+// Start, and Delete are rejected from Running state.
+func TestInvalidOpsFromRunningLinux(t *testing.T) {
+	cicd.LongRunningTest(t, 1)
+	testInvalidOpsFromRunning(t, imageLinux, tartvm.DefaultLinuxRunOptions()...)
+}
+
+// TestInvalidOpsFromRunningMacOS starts a macOS VM and verifies that Clone,
+// Start, and Delete are rejected from Running state.
+func TestInvalidOpsFromRunningMacOS(t *testing.T) {
+	cicd.LongRunningTest(t, 1)
+	testInvalidOpsFromRunning(t, imageMacOS, tartvm.DefaultMacOSRunOptions()...)
+}
+
+func testInvalidOpsFromRunning(t *testing.T, image string, runOptions ...string) {
+	t.Helper()
 	ctx := t.Context()
-	inst := tarvm.New(ctx, imageLinux, vmName(t), tarvm.WithRunOptions(tarvm.DefaultLinuxRunOptions()...))
+	inst := tartvm.New(ctx, image, vmName(t), tartvm.WithRunOptions(runOptions...))
 	cleanupVM(t, inst)
 
 	if err := inst.Clone(ctx); err != nil {
@@ -54,31 +67,7 @@ func TestInvalidOpsFromStopped(t *testing.T) {
 
 	assertActionError(t, inst.Suspend(ctx), "Suspend", "Stopped")
 	assertActionError(t, inst.Clone(ctx), "Clone", "Stopped")
-}
 
-// TestInvalidOpsFromRunningLinux starts a Linux VM and verifies that Clone,
-// Start, and Delete are rejected from Running state.
-func TestInvalidOpsFromRunningLinux(t *testing.T) {
-	cicd.LongRunningTest(t, 1)
-	testInvalidOpsFromRunning(t, imageLinux, tarvm.DefaultLinuxRunOptions()...)
-}
-
-// TestInvalidOpsFromRunningMacOS starts a macOS VM and verifies that Clone,
-// Start, and Delete are rejected from Running state.
-func TestInvalidOpsFromRunningMacOS(t *testing.T) {
-	cicd.LongRunningTest(t, 1)
-	testInvalidOpsFromRunning(t, imageMacOS, tarvm.DefaultMacOSRunOptions()...)
-}
-
-func testInvalidOpsFromRunning(t *testing.T, image string, runOptions ...string) {
-	t.Helper()
-	ctx := t.Context()
-	inst := tarvm.New(ctx, image, vmName(t), tarvm.WithRunOptions(runOptions...))
-	cleanupVM(t, inst)
-
-	if err := inst.Clone(ctx); err != nil {
-		t.Fatalf("Clone: %v", err)
-	}
 	if err := inst.Start(ctx, io.Discard, io.Discard); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -86,22 +75,12 @@ func testInvalidOpsFromRunning(t *testing.T, image string, runOptions ...string)
 	assertActionError(t, inst.Clone(ctx), "Clone", "Running")
 	assertActionError(t, inst.Start(ctx, io.Discard, io.Discard), "Start", "Running")
 	assertActionError(t, inst.Delete(ctx), "Delete", "Running")
-}
 
-// TestInvalidOpsFromSuspendedMacOS suspends a macOS VM and verifies that Stop
-// and Clone are rejected from Suspended state.
-func TestInvalidOpsFromSuspendedMacOS(t *testing.T) {
-	cicd.LongRunningTest(t, 1)
-	ctx := t.Context()
-	inst := tarvm.New(ctx, imageMacOS, vmName(t), tarvm.WithRunOptions(tarvm.DefaultMacOSRunOptions()...))
-	cleanupVM(t, inst)
+	// VM is still running
+	if !inst.Suspendable() {
+		return
+	}
 
-	if err := inst.Clone(ctx); err != nil {
-		t.Fatalf("Clone: %v", err)
-	}
-	if err := inst.Start(ctx, io.Discard, io.Discard); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
 	if err := inst.Suspend(ctx); err != nil {
 		t.Fatalf("Suspend: %v", err)
 	}

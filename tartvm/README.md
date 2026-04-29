@@ -41,6 +41,23 @@ Linux does not currently support suspend.
 
 
 ## Types
+### Type CloneInfo
+```go
+type CloneInfo struct {
+	Source string
+	Name   string
+}
+```
+
+### Methods
+
+```go
+func (c CloneInfo) String() string
+```
+
+
+
+
 ### Type Instance
 ```go
 type Instance struct {
@@ -84,16 +101,16 @@ the provided writers. It returns when the command completes.
 
 
 ```go
-func (inst *Instance) Name() string
+func (inst *Instance) ID() string
 ```
-Name returns the local VM name.
+ID returns the local VM's ID/name.
 
 
 ```go
-func (inst *Instance) Properties(ctx context.Context) (vms.Properties, error)
+func (inst *Instance) Properties(context.Context) (vms.Properties, error)
 ```
-Properties returns VM properties. It calls "tart ip" to obtain the IP
-address and returns SSH connection arguments for the default admin user.
+Properties returns VM properties. If the VM is running, it returns the IP
+address.
 
 
 ```go
@@ -205,6 +222,13 @@ func WithForceStopTimeout(timeout time.Duration) Option
 WithForceStopTimeout sets the timeout for forcefully stopping a VM when a
 run operation, or other operation, fails and the error recovery needs to
 stop the VM.
+
+
+```go
+func WithLogger(logger *slog.Logger) Option
+```
+WithLogger sets a logger to use for logging tart commands and state
+transitions.
 
 
 ```go
