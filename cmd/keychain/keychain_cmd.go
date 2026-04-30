@@ -57,7 +57,10 @@ type WriteFlags struct {
 
 func (pluginCmd) Read(ctx context.Context, f any, args []string) error {
 	fl := f.(*ReadFlags)
-	cfg := fl.Config()
+	cfg, err := fl.Config()
+	if err != nil {
+		return fmt.Errorf("failed to get config from flags: %w", err)
+	}
 	fs := plugins.NewFS(cfg.Binary, cfg)
 	contents, err := fs.ReadFileCtx(ctx, args[0])
 	if err != nil {
@@ -79,7 +82,10 @@ func (pluginCmd) Read(ctx context.Context, f any, args []string) error {
 
 func (pluginCmd) Write(ctx context.Context, f any, args []string) error {
 	fl := f.(*WriteFlags)
-	cfg := fl.Config()
+	cfg, err := fl.Config()
+	if err != nil {
+		return fmt.Errorf("failed to get config from flags: %w", err)
+	}
 	fs := plugins.NewFS(cfg.Binary, cfg)
 	filename := args[0]
 	name := filepath.Base(filename)

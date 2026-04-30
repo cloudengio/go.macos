@@ -1,7 +1,7 @@
 # Syntax=docker/dockerfile:1
 
 # Stage 1: Build the binary
-FROM golang:1.25 AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /go/src/app
 
