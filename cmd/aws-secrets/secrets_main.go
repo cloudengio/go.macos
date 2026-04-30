@@ -74,7 +74,10 @@ func (sc secretsCmd) config(ctx context.Context, fv Flags) (context.Context, aws
 	if fv.AWSKeyInfoID == "" {
 		return ctx, aws.Config{}, fmt.Errorf("no key info ID provided")
 	}
-	kcCfg := fv.ReadFlags.Config()
+	kcCfg, err := fv.ReadFlags.Config()
+	if err != nil {
+		return ctx, aws.Config{}, fmt.Errorf("failed to get keychain config from flags: %w", err)
+	}
 	fs := plugins.NewFS(kcCfg.Binary, kcCfg)
 	ims := keys.NewInMemoryKeyStore()
 	if err := ims.ReadYAML(ctx, fs, fv.KeychainItem); err != nil {

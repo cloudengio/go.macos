@@ -20,6 +20,7 @@ import (
 
 	"cloudeng.io/logging/ctxlog"
 	"cloudeng.io/macos/keychain"
+	"cloudeng.io/os/executil"
 	"cloudeng.io/security/keys/keychain/plugins"
 )
 
@@ -112,9 +113,13 @@ type WriteFlags struct {
 	Accessibility Accessibility `subcmd:"keychain-accessibility,,optional accessibility level for the keychain item"`
 }
 
-// PluginBinaryDefaultName is the default name of the plugin binary.
-const PluginBinaryDefaultName = "macos-keychain-plugin"
-const DefaultPluginBinaryPath = "/Applications/macos-keychain-plugin.app"
+const (
+	// DefaultPluginBinary is the default name of the plugin binary.
+	DefaultPluginBinary = "macos-keychain-plugin"
+
+	// DefaultPluginAppBundlePath is the default app bundle path.
+	DefaultPluginAppBundlePath = "/Applications/macos-keychain-plugin.app"
+)
 
 // LocatePluginBinary attempts to locate the plugin binary by first checking the
 // specified app bundle and then looking in the PATH for binary.
@@ -131,71 +136,95 @@ func LocatePluginBinary(appBundle, binary string) (string, error) {
 	return path, nil
 }
 
+// LookupPluginBinary attempts to locate the plugin binary by first checking the
+// specified app bundle and then looking in the PATH for binary. If the
+// app bundle is not specified, it defaults to DefaultPluginAppBundlePath. If
+// the binary is not specified, it defaults to DefaultPluginBinary. If the
+// binary cannot be found in either location, an error is returned.
+func LookupPluginBinary(appBundle, binary string) (string, error) {
+	if binary == "" {
+		binary = executil.ExecName(DefaultPluginBinary)
+	}
+	if appBundle == "" {
+		appBundle = DefaultPluginAppBundlePath
+	}
+	candidate := filepath.Join(appBundle, "Contents", "MacOS", binary)
+	fi, err := os.Stat(candidate)
+	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
+		return candidate, nil
+	}
+	path, err := exec.LookPath(binary)
+	if err != nil {
+		return "", fmt.Errorf("failed to find plugin binary in PATH: %v", err)
+	}
+	return path, nil
+}
+
 // Config returns a Config based on the KeychainFlags.
 // It provides a default value for the plugin binary if one is not specified
-// in the flags and a default account of os.Getenv("USER") if no account
-// is specified.
-func (f KeychainFlags) pluginConfig() Config {
-	appCandidate := filepath.Join(DefaultPluginBinaryPath, "Contents", "MacOS", "macos-keychain-plugin")
-	if f.UseApp != "" {
-		appCandidate = filepath.Join(f.UseApp, "Contents", "MacOS", PluginBinaryDefaultName)
+// in the flags. It also provides a default account of os.Getenv("USER") if
+func (f KeychainFlags) pluginConfig() (Config, error) {
+	// no account is specified.
+	binary, err := LookupPluginBinary(f.UseApp, f.Binary)
+	if err != nil {
+		return Config{}, err
 	}
-	fi, err := os.Stat(appCandidate)
-	if err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0100 != 0 {
-		f.Binary = appCandidate
-	}
-
-	if f.Binary == "" {
-		// Maybe PluginBinaryDefaultName is in the PATH.
-		f.Binary = PluginBinaryDefaultName
-	}
-
 	account := f.Account
 	if account == "" {
 		account = os.Getenv("USER")
 	}
 	return Config{
-		Binary:  f.Binary,
+		Binary:  binary,
 		Account: account,
+	}, nil
+}
+
+func (f ReadFlags) Config() (Config, error) {
+	c, err := f.pluginConfig()
+	if err != nil {
+		return Config{}, err
 	}
-}
-
-func (f ReadFlags) Config() Config {
-	c := f.pluginConfig()
 	c.Type = keychain.Type(f.Type)
-	return c
+	return c, nil
 }
 
-func (f WriteFlags) Config() Config {
-	cfg := f.pluginConfig()
+func (f WriteFlags) Config() (Config, error) {
+	cfg, err := f.pluginConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	cfg.Type = keychain.Type(f.Type)
 	cfg.UpdateInPlace = f.UpdateInPlace
 	cfg.Accessibility = keychain.Accessibility(f.Accessibility)
-	return cfg
+	return cfg, nil
 }
 
 // DefaultConfigForReading returns a Config with default values
 // suitable for reading from the keychain.
 func DefaultConfigForReading() Config {
-	cfg := KeychainFlags{}.pluginConfig()
+	cfg, _ := KeychainFlags{}.pluginConfig()
 	cfg.Type = keychain.KeychainAll
 	return cfg
 }
 
 // Config represents the configuration for a keychain plugin.
 type Config struct {
-	Binary        string                 `yaml:"plugin_binary"`
+	Binary        string                 `yaml:"plugin_binary" doc:"plugin binary to use, if not specified it defaults to DefaultPluginBinary, the binary must be present in the PATH or the specified app bundle or be an absolute path"`
+	UseApp        string                 `yaml:"app_bundle" doc:"app bundle that contains the plugin binary, if specified it takes precedence over Binary for locating the plugin binary, it defaults to DefaultPluginAppBundlePath"`
 	Type          keychain.Type          `yaml:"keychain_type"`
 	Account       string                 `yaml:"account"`
 	UpdateInPlace bool                   `yaml:"update_in_place"`
 	Accessibility keychain.Accessibility `yaml:"accessibility,omitempty"`
 }
 
+// FS returns a plugins.FS based on the Config. If the config does
+// not specify a binary DefaultPluginBinaryPath will be used.
 func (pc Config) FS() *plugins.FS {
-	return plugins.NewFS(pc.Binary, pc)
+	binary, _ := LookupPluginBinary(pc.UseApp, pc.Binary)
+	return plugins.NewFS(binary, pc)
 }
 
-// Server provides of a plugin for handling plugin requests to access
+// Server provides a plugin for handling plugin requests to access
 // the macos keychain. A plugin binary can use this to handle requests
 // and return responses.
 type Server struct {

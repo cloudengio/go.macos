@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"flag"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,9 +23,20 @@ import (
 	"cloudeng.io/security/keys/keychain/plugins"
 )
 
+var cwd string
+
+func init() {
+	var err error
+	cwd, err = os.Getwd()
+	if err != nil {
+		panic("failed to get current working directory: " + err.Error())
+	}
+}
+
 func TestPluginFlagsAndConfig(t *testing.T) {
+	egp := filepath.Join(cwd, "testdata/example_plugin")
 	args := []string{
-		"--keychain-plugin=./testdata/example_plugin",
+		"--keychain-plugin=" + egp,
 		"--keychain-use-app=not-there",
 		"--keychain-type=data-protection",
 		"--keychain-account=test-account",
@@ -39,8 +52,11 @@ func TestPluginFlagsAndConfig(t *testing.T) {
 		t.Fatalf("failed to parse flags: %v", err)
 	}
 
-	cfg := flagCfg.Config()
-	if got, want := cfg.Binary, "./testdata/example_plugin"; got != want {
+	cfg, err := flagCfg.Config()
+	if err != nil {
+		t.Fatalf("failed to get config from flags: %v", err)
+	}
+	if got, want := cfg.Binary, egp; got != want {
 		t.Errorf("got Binary %q, want %q", got, want)
 	}
 	if got, want := cfg.Type, keychain.KeychainDataProtectionLocal; got != want {
@@ -56,12 +72,28 @@ func TestPluginFlagsAndConfig(t *testing.T) {
 		t.Errorf("got Accessibility %v, want %v", got, want)
 	}
 
+	args = []string{
+		"--keychain-plugin=" + egp + "-not-there",
+		"--keychain-use-app=not-there",
+		"--keychain-type=data-protection",
+		"--keychain-account=test-account",
+		"--keychain-update-in-place=true",
+		"--keychain-accessibility=when-unlocked",
+	}
+	if err := fs.Parse(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+	cfg, err = flagCfg.Config()
+	if err == nil {
+		t.Fatalf("expected an error for missing plugin binary, got nil")
+	}
+
 }
 
 func TestPluginReadRequest(t *testing.T) {
 	ctx := t.Context()
 	cfg := plugin.Config{
-		Binary:        "./testdata/example_plugin",
+		Binary:        "not-needed-since-we-run-the-server-directly",
 		Type:          keychain.KeychainDataProtectionLocal,
 		Account:       "test-account",
 		UpdateInPlace: true,
@@ -179,8 +211,9 @@ func TestReadWriteTypes(t *testing.T) {
 }
 
 func TestReadFlags(t *testing.T) {
+	egp := filepath.Join(cwd, "testdata/example_plugin")
 	args := []string{
-		"--keychain-plugin=./testdata/example_plugin",
+		"--keychain-plugin=" + egp,
 		"--keychain-use-app=not-there",
 		"--keychain-type=all",
 		"--keychain-account=test-account",
@@ -194,8 +227,11 @@ func TestReadFlags(t *testing.T) {
 		t.Fatalf("failed to parse flags: %v", err)
 	}
 
-	cfg := flagCfg.Config()
-	if got, want := cfg.Binary, "./testdata/example_plugin"; got != want {
+	cfg, err := flagCfg.Config()
+	if err != nil {
+		t.Fatalf("failed to get config from flags: %v", err)
+	}
+	if got, want := cfg.Binary, filepath.Join(cwd, "testdata/example_plugin"); got != want {
 		t.Errorf("got Binary %q, want %q", got, want)
 	}
 	if got, want := cfg.Type, keychain.KeychainAll; got != want {
@@ -204,4 +240,19 @@ func TestReadFlags(t *testing.T) {
 	if got, want := cfg.Account, "test-account"; got != want {
 		t.Errorf("got Account %q, want %q", got, want)
 	}
+
+	args = []string{
+		"--keychain-plugin=" + egp + "-not-there",
+		"--keychain-use-app=not-there",
+		"--keychain-type=all",
+		"--keychain-account=test-account",
+	}
+	if err := fs.Parse(args); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+	cfg, err = flagCfg.Config()
+	if err == nil {
+		t.Fatalf("expected an error for missing plugin binary, got nil")
+	}
+
 }

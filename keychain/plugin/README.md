@@ -6,18 +6,14 @@ import cloudeng.io/macos/keychain/plugin
 
 
 ## Constants
-### DefaultPluginBinaryPath
+### DefaultPluginBinary, DefaultPluginAppBundlePath
 ```go
-DefaultPluginBinaryPath = "/Applications/macos-keychain-plugin.app"
+// DefaultPluginBinary is the default name of the plugin binary.
+DefaultPluginBinary = "macos-keychain-plugin"
+// DefaultPluginAppBundlePath is the default app bundle path.
+DefaultPluginAppBundlePath = "/Applications/macos-keychain-plugin.app"
 
 ```
-
-### PluginBinaryDefaultName
-```go
-PluginBinaryDefaultName = "macos-keychain-plugin"
-
-```
-PluginBinaryDefaultName is the default name of the plugin binary.
 
 
 
@@ -28,6 +24,16 @@ func LocatePluginBinary(appBundle, binary string) (string, error)
 ```
 LocatePluginBinary attempts to locate the plugin binary by first checking
 the specified app bundle and then looking in the PATH for binary.
+
+### Func LookupPluginBinary
+```go
+func LookupPluginBinary(appBundle, binary string) (string, error)
+```
+LookupPluginBinary attempts to locate the plugin binary by first checking
+the specified app bundle and then looking in the PATH for binary. If the
+app bundle is not specified, it defaults to DefaultPluginAppBundlePath.
+If the binary is not specified, it defaults to DefaultPluginBinary. If the
+binary cannot be found in either location, an error is returned.
 
 ### Func NewRequest
 ```go
@@ -69,7 +75,8 @@ func (a *Accessibility) String() string
 ### Type Config
 ```go
 type Config struct {
-	Binary        string                 `yaml:"plugin_binary"`
+	Binary        string                 `yaml:"plugin_binary" doc:"plugin binary to use, if not specified it defaults to DefaultPluginBinary, the binary must be present in the PATH or the specified app bundle or be an absolute path"`
+	UseApp        string                 `yaml:"app_bundle" doc:"app bundle that contains the plugin binary, if specified it takes precedence over Binary for locating the plugin binary, it defaults to DefaultPluginAppBundlePath"`
 	Type          keychain.Type          `yaml:"keychain_type"`
 	Account       string                 `yaml:"account"`
 	UpdateInPlace bool                   `yaml:"update_in_place"`
@@ -93,6 +100,8 @@ reading from the keychain.
 ```go
 func (pc Config) FS() *plugins.FS
 ```
+FS returns a plugins.FS based on the Config. If the config does not specify
+a binary DefaultPluginBinaryPath will be used.
 
 
 
@@ -122,7 +131,7 @@ ReadFlags are used for reading from the keychain plugin.
 ### Methods
 
 ```go
-func (f ReadFlags) Config() Config
+func (f ReadFlags) Config() (Config, error)
 ```
 
 
@@ -155,8 +164,8 @@ type Server struct {
 	// contains filtered or unexported fields
 }
 ```
-Server provides of a plugin for handling plugin requests to access the
-macos keychain. A plugin binary can use this to handle requests and return
+Server provides a plugin for handling plugin requests to access the macos
+keychain. A plugin binary can use this to handle requests and return
 responses.
 
 ### Functions
@@ -210,7 +219,7 @@ WriteFlags are used for writing to the keychain plugin.
 ### Methods
 
 ```go
-func (f WriteFlags) Config() Config
+func (f WriteFlags) Config() (Config, error)
 ```
 
 
