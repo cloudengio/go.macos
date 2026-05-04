@@ -22,7 +22,7 @@ func main() {
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	ctx := ctxlog.WithLogger(context.Background(), logger)
-	srv := plugin.NewServer(logger)
+	srv := plugin.NewServer(plugin.WithLogger(logger))
 	cfg, req, resp := srv.ReadRequest(ctx, os.Stdin)
 	if resp != nil {
 		srv.SendResponse(ctx, os.Stdout, resp)
