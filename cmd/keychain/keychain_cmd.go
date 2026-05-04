@@ -112,7 +112,7 @@ func (pluginCmd) Write(ctx context.Context, f any, args []string) error {
 	return handleError(err)
 }
 
-func (pluginCmd) New(ctx context.Context, f any, args []string) error {
+func (pluginCmd) New(ctx context.Context, f any, _ []string) error {
 	fl := f.(*NewFlags)
 	if fl.Name == "" {
 		return fmt.Errorf("name is required to create a new item in the keychain")

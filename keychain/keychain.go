@@ -5,6 +5,7 @@
 package keychain
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"gopkg.in/yaml.v3"
@@ -39,7 +40,7 @@ func (t *Type) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-	*t = Type(kt)
+	*t = kt
 	return nil
 }
 
@@ -48,19 +49,19 @@ func (t *Type) UnmarshalText(text []byte) error {
 	if err != nil {
 		return err
 	}
-	*t = Type(kt)
+	*t = kt
 	return nil
 }
 
 func (t *Type) UnmarshalJSON(data []byte) error {
 	var s string
-	if err := yaml.Unmarshal(data, &s); err != nil {
+	if err := json.Unmarshal(data, &s); err != nil {
 		return fmt.Errorf("failed to unmarshal keychain type from JSON: %w", err)
 	}
 	kt, err := ParseType(s)
 	if err != nil {
 		return err
 	}
-	*t = Type(kt)
+	*t = kt
 	return nil
 }
