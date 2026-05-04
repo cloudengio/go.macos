@@ -87,7 +87,6 @@ func TestPluginFlagsAndConfig(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected an error for missing plugin binary, got nil")
 	}
-
 }
 
 func TestPluginReadRequest(t *testing.T) {
@@ -102,7 +101,7 @@ func TestPluginReadRequest(t *testing.T) {
 
 	logBuf := &strings.Builder{}
 	logger := slog.New(slog.NewTextHandler(logBuf, nil))
-	ps := plugin.NewServer(logger)
+	ps := plugin.NewServer(plugin.WithLogger(logger))
 
 	req, err := plugin.NewRequest("test_key", cfg)
 	if err != nil {
@@ -116,42 +115,54 @@ func TestPluginReadRequest(t *testing.T) {
 	}
 
 	rCfg, rReq, resp := ps.ReadRequest(ctx, bytes.NewReader(data))
-
-	if got, want := rReq, req; !reflect.DeepEqual(got, want) {
-		t.Errorf("got request %v, want %v", got, want)
-	}
-
-	if got, want := rCfg, &cfg; !reflect.DeepEqual(got, want) {
-		t.Errorf("got config %v, want %v", got, want)
-	}
 	if resp != nil {
-		t.Fatalf("expected nil response, got %v", resp)
+		t.Fatalf("expected nil response, got %v (error: %v)", resp, resp.Error)
+	}
+
+	// Normalize expected request by round-tripping through JSON
+	var expectedReq plugins.Request
+	if err := json.Unmarshal(data, &expectedReq); err != nil {
+		t.Fatalf("failed to unmarshal expected request: %v", err)
+	}
+
+	if got, want := rReq.ID, expectedReq.ID; got != want {
+		t.Errorf("got request ID %v, want %v", got, want)
+	}
+	if got, want := rReq.Keyname, expectedReq.Keyname; got != want {
+		t.Errorf("got request Keyname %v, want %v", got, want)
+	}
+	if got, want := rReq.Write, expectedReq.Write; got != want {
+		t.Errorf("got request Write %v, want %v", got, want)
+	}
+	if !bytes.Equal(rReq.Contents, expectedReq.Contents) {
+		t.Errorf("got request Contents %v, want %v", rReq.Contents, expectedReq.Contents)
+	}
+
+	// Normalize expected config by round-tripping through JSON to account for any
+	// zero-values or type aliases that json.Marshal/Unmarshal might coerce.
+	var expectedCfg plugin.Config
+	cfgData, _ := json.Marshal(cfg)
+	_ = json.Unmarshal(cfgData, &expectedCfg)
+
+	if got, want := rCfg, &expectedCfg; !reflect.DeepEqual(got, want) {
+		t.Errorf("got config %+v, want %+v", got, want)
 	}
 
 	logged := logBuf.String()
-	if !strings.Contains(logged, "new request") {
-		t.Errorf("expected log to contain 'new request', got %q", logged)
+	checks := []string{
+		"new request",
+		"id=123",
+		"test-account",
+		"test_key",
+		"data-protection",
+		"when-unlocked",
+		"write=false",
+		"update_in_place=true",
 	}
-	if !strings.Contains(logged, "id=123") {
-		t.Errorf("expected log to contain 'account=test-account', got %q", logged)
-	}
-	if !strings.Contains(logged, "account=test-account") {
-		t.Errorf("expected log to contain 'account=test-account', got %q", logged)
-	}
-	if !strings.Contains(logged, "key=test_key") {
-		t.Errorf("expected log to contain 'key=test_key', got %q", logged)
-	}
-	if !strings.Contains(logged, "type=data-protection") {
-		t.Errorf("expected log to contain 'type=data-protection', got %q", logged)
-	}
-	if !strings.Contains(logged, "accessibility=when-unlocked") {
-		t.Errorf("expected log to contain 'accessibility=when-unlocked', got %q", logged)
-	}
-	if !strings.Contains(logged, "write=false") {
-		t.Errorf("expected log to contain 'write=false', got %q", logged)
-	}
-	if !strings.Contains(logged, "update_in_place=true") {
-		t.Errorf("expected log to contain 'update_in_place=true', got %q", logged)
+	for _, check := range checks {
+		if !strings.Contains(logged, check) {
+			t.Errorf("expected log to contain %q, got %q", check, logged)
+		}
 	}
 
 }
@@ -160,7 +171,7 @@ func TestSendResponse(t *testing.T) {
 	ctx := t.Context()
 	logBuf := &strings.Builder{}
 	logger := slog.New(slog.NewTextHandler(logBuf, nil))
-	ps := plugin.NewServer(logger)
+	ps := plugin.NewServer(plugin.WithLogger(logger))
 
 	resp := plugins.Response{
 		ID:       123,

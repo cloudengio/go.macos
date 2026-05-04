@@ -28,7 +28,7 @@ func TestReadWriteKeys(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 
-	nk1, ok := nks.Get("k1")
+	nk1, ok := nks.Get("u1", "k1")
 	if !ok {
 		t.Errorf("missing key k1")
 	}

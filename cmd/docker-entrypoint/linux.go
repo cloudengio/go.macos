@@ -58,13 +58,13 @@ func (dc dockerCmds) writeKeys(ctx context.Context, ims *keys.InMemoryKeyStore) 
 		return fmt.Errorf("failed to create keyring: %v", err)
 	}
 	for _, owner := range ims.KeyOwners() {
-		ki, ok := ims.Get(owner.ID)
+		ki, ok := ims.Get(owner.User, owner.ID)
 		if !ok {
-			return fmt.Errorf("key %q not found", owner.ID)
+			return fmt.Errorf("key %q not found for user %q", owner.ID, owner.User)
 		}
 		token := ki.Token()
 		if err := kfs.WriteFileCtx(ctx, token.ID, token.Value(), 0600); err != nil {
-			return fmt.Errorf("failed to write key %q: %v", owner.ID, err)
+			return fmt.Errorf("failed to write key %q for user %q: %v", owner.ID, owner.User, err)
 		}
 		fmt.Printf("docker-entrypoint: key written: %v\n", token.ID)
 	}
