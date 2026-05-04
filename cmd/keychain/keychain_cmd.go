@@ -112,6 +112,7 @@ func (pluginCmd) Write(ctx context.Context, f any, args []string) error {
 	return handleError(err)
 }
 
+<<<<<<< New base: keychain: keychain sundry updates, docker tests will fail for now.
 func (pluginCmd) New(ctx context.Context, f any, _ []string) error {
 	fl := f.(*NewFlags)
 	if fl.Name == "" {
@@ -147,6 +148,44 @@ func (pluginCmd) New(ctx context.Context, f any, _ []string) error {
 	return handleError(err)
 }
 
+||||||| Common ancestor
+=======
+func (pluginCmd) New(ctx context.Context, f any, args []string) error {
+	fl := f.(*NewFlags)
+	if fl.Name == "" {
+		return fmt.Errorf("name is required to create a new item in the keychain")
+	}
+	if fl.Template == "" {
+		return fmt.Errorf("template is required to create a new item in the keychain")
+	}
+	cfg, err := fl.Config()
+	if err != nil {
+		return fmt.Errorf("failed to get config from flags: %w", err)
+	}
+	fs := plugins.NewFS(cfg.Binary, cfg)
+	var contents []byte
+	switch fl.Template {
+	case "key_info.yaml":
+		k := keys.NewInfo("owner", "example-token-id", []byte("token"))
+		k.WithExtra(struct {
+			ExtraInfo string `yaml:"extra_info_example"`
+		}{})
+		ki := []keys.Info{k}
+		var err error
+		contents, err = yaml.Marshal(ki)
+		if err != nil {
+			return fmt.Errorf("failed to marshal template %T: %w", ki, err)
+		}
+		fmt.Printf("creating new item %q in keychain using template %q\n", fl.Name, fl.Template)
+	default:
+		return fmt.Errorf("unsupported template %q", fl.Template)
+	}
+	fmt.Printf("writing item %q as %q to keychain\n", fl.Name, fl.Template)
+	err = fs.WriteFileCtx(ctx, fl.Name, contents, 0600)
+	return handleError(err)
+}
+
+>>>>>>> Current commit: keychain: keychain sundry updates, docker tests will fail for now.
 func handleError(err error) error {
 	if err == nil {
 		return nil

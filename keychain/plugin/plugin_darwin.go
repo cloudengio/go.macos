@@ -235,6 +235,7 @@ type options struct {
 	logger *slog.Logger
 }
 
+<<<<<<< New base: keychain: keychain sundry updates, docker tests will fail for now.
 // Option configures a Server created by NewServer.
 type Option func(*options)
 
@@ -254,6 +255,33 @@ func NewServer(opts ...Option) *Server {
 	}
 	if opt.logger == nil {
 		opt.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+||||||| Common ancestor
+// NewServer creates a new Server with the provided logger. If
+// logger is nil, a default logger that discards all logs will be used.
+func NewServer(logger *slog.Logger) *Server {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+=======
+type Option func(*options)
+
+// WithLogger sets the logger for the Server. If not provided, a default logger
+// that discards all logs will be used.
+func WithLogger(logger *slog.Logger) Option {
+	return func(o *options) {
+		o.logger = logger
+	}
+}
+
+// NewServer creates a new Server with the provided logger. If
+// logger is nil, a default logger that discards all logs will be used.
+func NewServer(opts ...Option) *Server {
+	var opt options
+	for _, o := range opts {
+		o(&opt)
+	}
+	if opt.logger == nil {
+		opt.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+>>>>>>> Current commit: keychain: keychain sundry updates, docker tests will fail for now.
 	}
 	return &Server{
 		opts: opt,
