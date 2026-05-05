@@ -43,7 +43,7 @@ func readIMS(rd io.Reader) (*keys.InMemoryKeyStore, error) {
 	}
 	var ims keys.InMemoryKeyStore
 	if err := json.Unmarshal(m.Payload, &ims); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ahaha : %w", err)
 	}
 	return &ims, nil
 }
