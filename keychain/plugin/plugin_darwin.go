@@ -235,18 +235,18 @@ type options struct {
 	logger *slog.Logger
 }
 
+// Option configures a Server created by NewServer.
 type Option func(*options)
 
-// WithLogger sets the logger for the Server. If not provided, a default logger
-// that discards all logs will be used.
+// WithLogger sets the logger for the Server. If no logger is provided, a
+// default logger that discards all logs will be used.
 func WithLogger(logger *slog.Logger) Option {
 	return func(o *options) {
 		o.logger = logger
 	}
 }
 
-// NewServer creates a new Server with the provided logger. If
-// logger is nil, a default logger that discards all logs will be used.
+// NewServer creates a new Server with the provided options.
 func NewServer(opts ...Option) *Server {
 	var opt options
 	for _, o := range opts {
