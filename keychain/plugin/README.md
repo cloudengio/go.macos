@@ -75,12 +75,12 @@ func (a *Accessibility) String() string
 ### Type Config
 ```go
 type Config struct {
-	Binary        string                 `yaml:"plugin_binary" doc:"plugin binary to use, if not specified it defaults to DefaultPluginBinary, the binary must be present in the PATH or the specified app bundle or be an absolute path"`
-	UseApp        string                 `yaml:"app_bundle" doc:"app bundle that contains the plugin binary, if specified it takes precedence over Binary for locating the plugin binary, it defaults to DefaultPluginAppBundlePath"`
-	Type          keychain.Type          `yaml:"keychain_type"`
-	Account       string                 `yaml:"account"`
-	UpdateInPlace bool                   `yaml:"update_in_place"`
-	Accessibility keychain.Accessibility `yaml:"accessibility,omitempty"`
+	Binary        string                 `yaml:"plugin_binary" doc:"plugin binary to use, if not specified it defaults to DefaultPluginBinary, the binary must be present in the PATH or the specified app bundle or be an absolute path" json:"-"`
+	UseApp        string                 `yaml:"app_bundle" doc:"app bundle that contains the plugin binary, if specified it takes precedence over Binary for locating the plugin binary, it defaults to DefaultPluginAppBundlePath" json:"-"`
+	Type          keychain.Type          `yaml:"keychain_type" doc:"the type of keychain to use, currently supported types are: file, data-protection and icloud" json:"type"`
+	Account       string                 `yaml:"account" doc:"account that the keychain item belongs to" json:"account"`
+	UpdateInPlace bool                   `yaml:"update_in_place" doc:"set to true to update existing item in place" json:"update_in_place,omitempty"`
+	Accessibility keychain.Accessibility `yaml:"accessibility,omitempty" doc:"optional accessibility level for the keychain item" json:"accessibility,omitempty"`
 }
 ```
 Config represents the configuration for a keychain plugin.
