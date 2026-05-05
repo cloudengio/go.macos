@@ -198,7 +198,37 @@ ParseType parses a string into a KeychainType.
 ### Methods
 
 ```go
+func (t Type) MarshalJSON() ([]byte, error)
+```
+
+
+```go
+func (t Type) MarshalText() ([]byte, error)
+```
+
+
+```go
+func (t Type) MarshalYAML() (any, error)
+```
+
+
+```go
 func (t Type) String() string
+```
+
+
+```go
+func (t *Type) UnmarshalJSON(data []byte) error
+```
+
+
+```go
+func (t *Type) UnmarshalText(text []byte) error
+```
+
+
+```go
+func (t *Type) UnmarshalYAML(node *yaml.Node) error
 ```
 
 

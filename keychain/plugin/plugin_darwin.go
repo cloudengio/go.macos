@@ -93,7 +93,7 @@ func (a *Accessibility) String() string {
 // the MacOS keychain plugin.
 type KeychainFlags struct {
 	Binary  string `subcmd:"keychain-plugin,,path to the plugin binary"`
-	UseApp  string `subcmd:"keychain-use-app,,'if empty, defaults to Applications/macos-keychain-plugin.app, but can be set to any app bundle that contains the plugin binary (macos-keychain-plugin)'"`
+	UseApp  string `subcmd:"keychain-use-app,,'if empty, defaults to /Applications/macos-keychain-plugin.app, but can be set to any app bundle that contains the plugin binary (macos-keychain-plugin)'"`
 	Account string `subcmd:"keychain-account,,account that the keychain item belongs to"`
 }
 
@@ -228,17 +228,35 @@ func (pc Config) FS() *plugins.FS {
 // the macos keychain. A plugin binary can use this to handle requests
 // and return responses.
 type Server struct {
+	opts options
+}
+
+type options struct {
 	logger *slog.Logger
 }
 
-// NewServer creates a new Server with the provided logger. If
-// logger is nil, a default logger that discards all logs will be used.
-func NewServer(logger *slog.Logger) *Server {
-	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+// Option configures a Server created by NewServer.
+type Option func(*options)
+
+// WithLogger sets the logger for the Server. If no logger is provided, a
+// default logger that discards all logs will be used.
+func WithLogger(logger *slog.Logger) Option {
+	return func(o *options) {
+		o.logger = logger
+	}
+}
+
+// NewServer creates a new Server with the provided options.
+func NewServer(opts ...Option) *Server {
+	var opt options
+	for _, o := range opts {
+		o(&opt)
+	}
+	if opt.logger == nil {
+		opt.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Server{
-		logger: logger,
+		opts: opt,
 	}
 }
 
@@ -255,7 +273,7 @@ func (ps *Server) ReadRequest(ctx context.Context, rd io.Reader) (*Config, plugi
 	if err := json.Unmarshal(req.SysSpecific, &cfg); err != nil {
 		return nil, plugins.Request{}, errorResponse(ctx, req, "failed to unmarshal sys_specific", err.Error())
 	}
-	ps.logger.Info("new request",
+	ps.opts.logger.Info("new request",
 		"id", req.ID,
 		"account", cfg.Account,
 		"key", req.Keyname,
@@ -316,14 +334,14 @@ func (ps *Server) SendResponse(ctx context.Context, w io.Writer, resp *plugins.R
 	output, err := json.Marshal(resp)
 	if err != nil {
 		resp.Contents = nil
-		ps.logger.Error("failed to marshal response", "error", err, "response", resp)
+		ps.opts.logger.Error("failed to marshal response", "error", err, "response", resp)
 		errResp := errorResponse(ctx, plugins.Request{}, "failed to marshal response", err.Error())
 		output, _ = json.Marshal(errResp)
 	}
 	_, err = w.Write(output)
 	if err != nil {
-		ps.logger.Error("failed to write response", "error", err)
+		ps.opts.logger.Error("failed to write response", "error", err)
 		return
 	}
-	ps.logger.Info("sent response", "id", resp.ID, "error", resp.Error)
+	ps.opts.logger.Info("sent response", "id", resp.ID, "error", resp.Error)
 }

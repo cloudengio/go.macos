@@ -4,4 +4,5 @@
 //
 //	 read - read items from the keychain
 //	write - write items to the keychain
+//	  new - create a new empty keychain item using a template.
 package main

@@ -110,12 +110,29 @@ a binary DefaultPluginBinaryPath will be used.
 ```go
 type KeychainFlags struct {
 	Binary  string `subcmd:"keychain-plugin,,path to the plugin binary"`
-	UseApp  string `subcmd:"keychain-use-app,,'if empty, defaults to Applications/macos-keychain-plugin.app, but can be set to any app bundle that contains the plugin binary (macos-keychain-plugin)'"`
+	UseApp  string `subcmd:"keychain-use-app,,'if empty, defaults to /Applications/macos-keychain-plugin.app, but can be set to any app bundle that contains the plugin binary (macos-keychain-plugin)'"`
 	Account string `subcmd:"keychain-account,,account that the keychain item belongs to"`
 }
 ```
 KeychainFlags are commonly required flags for working with the MacOS
 keychain plugin.
+
+
+### Type Option
+```go
+type Option func(*options)
+```
+Option configures a Server created by NewServer.
+
+### Functions
+
+```go
+func WithLogger(logger *slog.Logger) Option
+```
+WithLogger sets the logger for the Server. If no logger is provided,
+a default logger that discards all logs will be used.
+
+
 
 
 ### Type ReadFlags
@@ -171,10 +188,9 @@ responses.
 ### Functions
 
 ```go
-func NewServer(logger *slog.Logger) *Server
+func NewServer(opts ...Option) *Server
 ```
-NewServer creates a new Server with the provided logger. If logger is nil,
-a default logger that discards all logs will be used.
+NewServer creates a new Server with the provided options.
 
 
 
