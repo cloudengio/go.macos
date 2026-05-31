@@ -180,6 +180,48 @@ func TestWriteDataProtectionReadAll(t *testing.T) {
 	}
 }
 
+// TestReadWriteTypes verifies that WithReadWriteTypes overrides the type used
+// for read and write/delete operations independently of the base type.
+// The scenario: a KeychainAll-typed keychain searches all keychains on read,
+// but DeleteSecureNote normally fails ("cannot delete from keychain of type 'all'").
+// WithReadWriteTypes(..., KeychainFileBased) sets the write type so that delete
+// targets the file-based keychain and succeeds.
+func TestReadWriteTypes(t *testing.T) {
+	service := fmt.Sprintf("cloudeng.io-test-service-%v", t.Name())
+	account := "test-account"
+	data := []byte("test-data")
+
+	// Write to the file-based keychain.
+	kcFile := keychain.New(keychain.KeychainFileBased, account)
+	_ = kcFile.DeleteSecureNote(service)
+	if err := kcFile.WriteSecureNote(service, data); err != nil {
+		t.Fatalf("WriteSecureNote: %v", err)
+	}
+
+	// Verify that deleting from a plain KeychainAll keychain fails.
+	kcAll := keychain.New(keychain.KeychainAll, account)
+	if err := kcAll.DeleteSecureNote(service); err == nil {
+		t.Error("expected error when deleting from KeychainAll without a write-type override")
+	}
+
+	// WithReadWriteTypes allows the same keychain to read across all keychains
+	// while deleting/updating only the file-based keychain.
+	kcRW := keychain.New(keychain.KeychainAll, account,
+		keychain.WithWriteType(keychain.KeychainFileBased))
+
+	readData, err := kcRW.ReadSecureNote(service)
+	if err != nil {
+		t.Fatalf("ReadSecureNote: %v", err)
+	}
+	if string(readData) != string(data) {
+		t.Errorf("got %q, want %q", string(readData), string(data))
+	}
+
+	if err := kcRW.DeleteSecureNote(service); err != nil {
+		t.Fatalf("DeleteSecureNote with write-type override: %v", err)
+	}
+}
+
 func TestFS(*testing.T) {
 	var _ file.ReadFileFS = keychain.New(keychain.KeychainFileBased, "test-account")
 	var _ file.WriteFileFS = keychain.New(keychain.KeychainFileBased, "test-account")

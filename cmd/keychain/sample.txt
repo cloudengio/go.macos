@@ -1,0 +1,6 @@
+- key_id: <id used in config files etc>
+  user: <email>
+  token: <the secret>
+  extra:
+    access_key_id: <aws>
+    region: <aws region>

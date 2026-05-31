@@ -75,6 +75,9 @@ func WithPollingInterval(interval time.Duration) Option {
 // The default is DefaultRunTimeout.
 func WithRunTimeout(timeout time.Duration) Option {
 	return func(o *options) {
+		if timeout <= 0 {
+			timeout = DefaultRunTimeout
+		}
 		o.runTimeout = timeout
 	}
 }
@@ -92,6 +95,9 @@ func WithRunOptions(opts ...string) Option {
 // stop the VM.
 func WithForceStopTimeout(timeout time.Duration) Option {
 	return func(o *options) {
+		if timeout <= 0 {
+			timeout = DefaultForceStopTimeout
+		}
 		o.forceStopTimeout = timeout
 	}
 }
