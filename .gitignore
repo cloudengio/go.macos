@@ -62,3 +62,8 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 
 **/.DS_Store
+
+cmd/aws-secrets/aws-secrets
+cmd/keychain/keychain
+cmd/keychain-plugin/keychain-plugin
+go.macos.code-workspace

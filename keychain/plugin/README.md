@@ -78,14 +78,23 @@ type Config struct {
 	Binary        string                 `yaml:"plugin_binary" doc:"plugin binary to use, if not specified it defaults to DefaultPluginBinary, the binary must be present in the PATH or the specified app bundle or be an absolute path" json:"-"`
 	UseApp        string                 `yaml:"app_bundle" doc:"app bundle that contains the plugin binary, if specified it takes precedence over Binary for locating the plugin binary, it defaults to DefaultPluginAppBundlePath" json:"-"`
 	Type          keychain.Type          `yaml:"keychain_type" doc:"the type of keychain to use, currently supported types are: file, data-protection and icloud" json:"type"`
+	WriteType     keychain.Type          `yaml:"keychain_write_type" doc:"the type of keychain to use for writing, currently supported types are: file, data-protection and icloud, this is needed because the 'all' type is not valid for writing" json:"write_type"`
 	Account       string                 `yaml:"account" doc:"account that the keychain item belongs to" json:"account"`
 	UpdateInPlace bool                   `yaml:"update_in_place" doc:"set to true to update existing item in place" json:"update_in_place,omitempty"`
 	Accessibility keychain.Accessibility `yaml:"accessibility,omitempty" doc:"optional accessibility level for the keychain item" json:"accessibility,omitempty"`
 }
 ```
-Config represents the configuration for a keychain plugin.
+Config represents the configuration for a keychain plugin. It is also used
+as the SysSpecific field in plugin requests and responses.
 
 ### Functions
+
+```go
+func DefaultConfigForReadWrite() Config
+```
+DefaultConfigForWriting returns a Config with default values suitable for
+both reading and writing to the keychain.
+
 
 ```go
 func DefaultConfigForReading() Config
