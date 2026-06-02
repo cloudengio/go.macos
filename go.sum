@@ -14,8 +14,8 @@ cloudeng.io/linux v0.0.0-20251206055912-df09039c8e99 h1:J0lsVFlcxoc7AC64YHay9Apc
 cloudeng.io/linux v0.0.0-20251206055912-df09039c8e99/go.mod h1:3O+nIzuMa60qq1kLbV0JPRj05PdZMJuUbqOFam8P5XU=
 cloudeng.io/logging v0.0.0-20260529160711-8ba9f0c7b2ae h1:K5BODo3+44LdGcBqOeM8yLr4arLrkOWmizllnKRulHs=
 cloudeng.io/logging v0.0.0-20260529160711-8ba9f0c7b2ae/go.mod h1:1srNtLRpQsIoLck/p/JmvR/QfwfPbDO/65orqtdh1N0=
-cloudeng.io/os v0.0.0-20260529160711-8ba9f0c7b2ae h1:bw56ZNil+XJDnKLV0ljvxfoiW1Ak6DOoDAZhlAq+JWY=
-cloudeng.io/os v0.0.0-20260529160711-8ba9f0c7b2ae/go.mod h1:8+NOElfbKi78EFT2pfI2sHwYC0uEESmft9AvklmmMwg=
+cloudeng.io/os v0.0.0-20260601212956-cbb9ba55a911 h1:+U/tSXq22Bl4F276nO+AZ38lFfUx3iGtj4EKbom20GA=
+cloudeng.io/os v0.0.0-20260601212956-cbb9ba55a911/go.mod h1:8+NOElfbKi78EFT2pfI2sHwYC0uEESmft9AvklmmMwg=
 cloudeng.io/security v0.0.0-20260531155828-4e9808eca7fa h1:3QpOY5f8M+l0B7SkpeBjKAAwtHLJuxagWeeJ/GZ+hbM=
 cloudeng.io/security v0.0.0-20260531155828-4e9808eca7fa/go.mod h1:qrQyma5Y7W7Vt26nlPZ5F+T2UR9iq194zJKSRJqlWw4=
 cloudeng.io/sync v0.0.11 h1:w0KEssgwRzTwZ0ZVNaNmBExkvy+GBHK6rdokFSZE7H0=
@@ -52,8 +52,7 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.25 h1:dD3dhHNg
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.25/go.mod h1:0yAbjPfd64gG7mj85RW+fMEYdfBgCRZw8g/oWcL1pjc=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.23 h1:03xatSQO4+AM1lTAbnRg5OK528EUg744nW7F73U8DKw=
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.23/go.mod h1:M8l3mwgx5ToK7wot2sBBce/ojzgnPzZXUV445gTSyE8=
-github.com/aws/aws-sdk-go-v2/service/kms v1.52.2 h1:J0TorhKhXYPjIgLWd/J+q2bJVGywwyFApA+6Iqf2808=
-github.com/aws/aws-sdk-go-v2/service/kms v1.52.2/go.mod h1:oqZYP0JN0ih1JTsoiT10Un/Ivg8LeVOMTK+UDNBq3sU=
+github.com/aws/aws-sdk-go-v2/service/kms v1.53.0 h1:d/qhv0TFUtqeaLWmX5rJlKG+qBr/gQnsNPR66bYtnAU=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.102.0 h1:gfPQ6do5PZTCc5n/vZUHz/G8McrNrfERGSO+iHvVbCA=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.102.0/go.mod h1:wO6U9egJtCtsZEHG2AAcFf1kUWDRrH0Iif6K3bVmmdE=
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.9 h1:2zXcs+s7xDyX+BJ3Fi+V8wl65HvxI/7BPy88MjzomiY=

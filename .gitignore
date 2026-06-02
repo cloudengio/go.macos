@@ -67,3 +67,5 @@ cmd/aws-secrets/aws-secrets
 cmd/keychain/keychain
 cmd/keychain-plugin/keychain-plugin
 go.macos.code-workspace
+go.work
+go.work.sum

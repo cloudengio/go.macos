@@ -221,7 +221,7 @@ func DefaultConfigForReadWrite() Config {
 }
 
 // Config represents the configuration for a keychain plugin. It is also
-// used as the SysSpecific field in plugin requests and responses.
+// used as the PluginSpecific field in plugin requests and responses.
 type Config struct {
 	Binary        string                 `yaml:"plugin_binary" doc:"plugin binary to use, if not specified it defaults to DefaultPluginBinary, the binary must be present in the PATH or the specified app bundle or be an absolute path" json:"-"`
 	UseApp        string                 `yaml:"app_bundle" doc:"app bundle that contains the plugin binary, if specified it takes precedence over Binary for locating the plugin binary, it defaults to DefaultPluginAppBundlePath" json:"-"`
