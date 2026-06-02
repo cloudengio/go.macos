@@ -10,7 +10,7 @@ require (
 	cloudeng.io/file v0.0.0-20260529160711-8ba9f0c7b2ae
 	cloudeng.io/linux v0.0.0-20251206055912-df09039c8e99
 	cloudeng.io/logging v0.0.0-20260529160711-8ba9f0c7b2ae
-	cloudeng.io/os v0.0.0-20260529160711-8ba9f0c7b2ae
+	cloudeng.io/os v0.0.0-20260601212956-cbb9ba55a911
 	cloudeng.io/security v0.0.0-20260531155828-4e9808eca7fa
 	cloudeng.io/text v0.0.16-0.20260312171538-61fcde6ce278
 	cloudeng.io/vms v0.0.0-20260531155828-4e9808eca7fa
@@ -31,6 +31,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.26 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.25 // indirect
+	github.com/aws/aws-sdk-go-v2/service/kms v1.53.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.1.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.19 // indirect

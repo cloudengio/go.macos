@@ -85,7 +85,7 @@ type Config struct {
 }
 ```
 Config represents the configuration for a keychain plugin. It is also used
-as the SysSpecific field in plugin requests and responses.
+as the PluginSpecific field in plugin requests and responses.
 
 ### Functions
 
