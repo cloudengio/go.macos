@@ -11,6 +11,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// SecureNoteReader defines the interface for reading secure notes from the keychain.
+type SecureNoteReader interface {
+	ReadSecureNote(service string) (data []byte, err error)
+}
+
+// Type represents the type of keychain to use.
+type Type int
+
 func (t Type) MarshalYAML() (any, error) {
 	return t.String(), nil
 }
@@ -22,14 +30,6 @@ func (t Type) MarshalText() ([]byte, error) {
 func (t Type) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + t.String() + `"`), nil
 }
-
-// SecureNoteReader defines the interface for reading secure notes from the keychain.
-type SecureNoteReader interface {
-	ReadSecureNote(service string) (data []byte, err error)
-}
-
-// Type represents the type of keychain to use.
-type Type int
 
 func (t *Type) UnmarshalYAML(node *yaml.Node) error {
 	var s string

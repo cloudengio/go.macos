@@ -63,9 +63,24 @@ WithAccessibility sets the accessibility option for a keychain.T.
 
 
 ```go
+func WithLogger(logger *slog.Logger) Option
+```
+WithLogger sets the logger for a keychain.T. The default is to use a logger
+that discards all logs.
+
+
+```go
 func WithUpdateInPlace(v bool) Option
 ```
 WithUpdateInPlace sets the updateInPlace option for a keychain.T.
+
+
+```go
+func WithWriteType(write Type) Option
+```
+WithWriteType sets the read and write types for a keychain.T. The default is
+to use the type specified when a keychain.T is created for both reading and
+writing.
 
 
 
@@ -150,7 +165,7 @@ func (kc T) WriteFileCtx(_ context.Context, service string, data []byte, _ fs.Fi
 func (kc T) WriteSecureNote(service string, data []byte) error
 ```
 WriteSecureNote writes a secure note to the keychain. It will update an
-existing note if it WithUpdateInPlace was set to true.
+existing note if WithUpdateInPlace was set to true.
 
 
 

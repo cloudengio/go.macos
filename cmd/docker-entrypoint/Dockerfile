@@ -11,7 +11,7 @@ COPY . .
 RUN go mod init cloudeng.io/macos/cmd/docker-entrypoint-test && \
     go mod download && \
     go mod tidy
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o docker-entrypoint .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -tags=container -o docker-entrypoint .
 
 # Stage 2: Create the final image
 FROM alpine:3.19

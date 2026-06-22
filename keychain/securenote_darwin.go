@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 
 	"github.com/cloudengio/go-keychain"
 )
@@ -28,6 +29,9 @@ type Option func(o *options)
 type options struct {
 	updateInPlace bool
 	accessibility Accessibility
+	customTypes   bool
+	writeType     Type
+	logger        *slog.Logger
 }
 
 // WithUpdateInPlace sets the updateInPlace option for a keychain.T.
@@ -42,6 +46,31 @@ func WithAccessibility(v Accessibility) Option {
 	return func(o *options) {
 		o.accessibility = v
 	}
+}
+
+// WithWriteType sets the read and write types for a keychain.T. The
+// default is to use the type specified when a keychain.T is created for both
+// reading and writing.
+func WithWriteType(write Type) Option {
+	return func(o *options) {
+		o.customTypes = true
+		o.writeType = write
+	}
+}
+
+// WithLogger sets the logger for a keychain.T. The default is to use a
+// logger that discards all logs.
+func WithLogger(logger *slog.Logger) Option {
+	return func(o *options) {
+		o.logger = logger
+	}
+}
+
+func (kc T) writeTypeOrDefault() Type {
+	if kc.opts.customTypes {
+		return kc.opts.writeType
+	}
+	return kc.typ
 }
 
 const (
@@ -158,9 +187,10 @@ func ParseType(s string) (Type, error) {
 
 // T represents a keychain that can be used to read and write secure notes.
 type T struct {
-	typ     Type
-	opts    options
-	account string
+	typ            Type
+	opts           options
+	account        string
+	readonlyUpdate bool
 }
 
 func newKeychain(readonly bool, typ Type, account string, opts ...Option) *T {
@@ -169,10 +199,11 @@ func newKeychain(readonly bool, typ Type, account string, opts ...Option) *T {
 	for _, opt := range opts {
 		opt(&options)
 	}
-	if readonly && options.updateInPlace {
-		panic("updateInPlace cannot be true for a readonly keychain")
+	readonlyUpdate := readonly && options.updateInPlace
+	if options.logger == nil {
+		options.logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &T{typ: typ, account: account, opts: options}
+	return &T{typ: typ, readonlyUpdate: readonlyUpdate, account: account, opts: options}
 }
 
 // New creates a new Keychain.
@@ -197,13 +228,23 @@ func (kc T) configure(item *keychain.Item, typ Type) {
 }
 
 // WriteSecureNote writes a secure note to the keychain. It will update
-// an existing note if it WithUpdateInPlace was set to true.
+// an existing note if WithUpdateInPlace was set to true.
 func (kc T) WriteSecureNote(service string, data []byte) error {
-	if kc.typ == KeychainAll {
+	if kc.readonlyUpdate {
+		return fmt.Errorf("cannot write to readonly keychain, but update in place is enabled")
+	}
+	typ := kc.writeTypeOrDefault()
+	if typ == KeychainAll {
 		return fmt.Errorf("cannot write to keychain of type 'all'")
 	}
+	kc.opts.logger.Info("writing secure note",
+		"account", kc.account,
+		"service", service,
+		"accessibility", kc.opts.accessibility.String(),
+		"type", typ.String(),
+	)
 	item := keychain.NewItem()
-	kc.configure(&item, kc.typ)
+	kc.configure(&item, typ)
 	item.SetService(service)
 	item.SetLabel(service)
 	item.SetAccount(kc.account)
@@ -213,7 +254,12 @@ func (kc T) WriteSecureNote(service string, data []byte) error {
 	err := keychain.AddItem(item)
 	if err == keychain.ErrorDuplicateItem {
 		if kc.opts.updateInPlace {
-			return kc.updateSecureNote(service, data, kc.typ)
+			kc.opts.logger.Info("item already exists, updating in place",
+				"account", kc.account,
+				"service", service,
+				"type", typ.String(),
+			)
+			return kc.updateSecureNote(service, data, typ)
 		}
 		err = fs.ErrExist
 	}
@@ -222,10 +268,19 @@ func (kc T) WriteSecureNote(service string, data []byte) error {
 
 // UpdateSecureNote updates an existing secure note in the keychain.
 func (kc T) UpdateSecureNote(service string, data []byte) error {
-	if kc.typ == KeychainAll {
+	if kc.readonlyUpdate {
+		return fmt.Errorf("cannot write to readonly keychain, but update in place is enabled")
+	}
+	kc.opts.logger.Info("updating secure note",
+		"account", kc.account,
+		"service", service,
+		"type", kc.writeTypeOrDefault().String(),
+	)
+	typ := kc.writeTypeOrDefault()
+	if typ == KeychainAll {
 		return fmt.Errorf("cannot update keychain of type 'all'")
 	}
-	return kc.updateSecureNote(service, data, kc.typ)
+	return kc.updateSecureNote(service, data, typ)
 }
 
 func (kc T) updateSecureNote(service string, data []byte, typ Type) error {
@@ -270,6 +325,11 @@ func (kc T) ReadSecureNote(service string) (data []byte, err error) {
 	if kc.typ == KeychainAll {
 		searchList = searchListAll
 	}
+	kc.opts.logger.Info("reading secure note",
+		"account", kc.account,
+		"service", service,
+		"type", kc.typ.String(),
+	)
 	for _, typ := range searchList {
 		result, err := kc.queryNote(service, typ)
 		if err != nil {
@@ -289,6 +349,11 @@ func (kc T) ReadSecureNote(service string) (data []byte, err error) {
 		if err != nil {
 			return nil, err
 		}
+		kc.opts.logger.Info("read secure note, found item",
+			"account", kc.account,
+			"service", service,
+			"type", typ.String(),
+		)
 		return data, err
 	}
 	return nil, fs.ErrNotExist
@@ -296,15 +361,25 @@ func (kc T) ReadSecureNote(service string) (data []byte, err error) {
 
 // DeleteSecureNote deletes a secure note from the keychain.
 func (kc T) DeleteSecureNote(service string) error {
-	if kc.typ == KeychainAll {
+	if kc.readonlyUpdate {
+		return fmt.Errorf("cannot write to readonly keychain, but update in place is enabled")
+	}
+
+	typ := kc.writeTypeOrDefault()
+	if typ == KeychainAll {
 		return fmt.Errorf("cannot delete from keychain of type 'all'")
 	}
-	result, err := kc.queryNote(service, kc.typ)
+	kc.opts.logger.Info("deleting secure note",
+		"account", kc.account,
+		"service", service,
+		"type", typ.String(),
+	)
+	result, err := kc.queryNote(service, typ)
 	if err != nil {
 		return err
 	}
 	item := keychain.NewItem()
-	kc.configure(&item, kc.typ)
+	kc.configure(&item, typ)
 	item.SetService(result.Service)
 	item.SetAccount(result.Account)
 	item.SetDescription(result.Description)
