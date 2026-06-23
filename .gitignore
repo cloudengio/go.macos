@@ -69,3 +69,5 @@ cmd/keychain-plugin/keychain-plugin
 go.macos.code-workspace
 go.work
 go.work.sum
+
+.gograph/
