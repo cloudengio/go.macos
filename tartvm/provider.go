@@ -228,15 +228,15 @@ func (r ResourceConfig) configured() bool {
 }
 
 func (r ResourceConfig) flags() []string {
-	opts := []string{}
+	var opts []string
 	if r.Disk > 0 {
-		opts = append(opts, "--disk", fmt.Sprintf("%d", r.Disk))
+		opts = append(opts, "--disk", strconv.Itoa(int(r.Disk/cmdtypes.GB)))
 	}
 	if r.NumCPU > 0 {
-		opts = append(opts, "--cpu", fmt.Sprintf("%d", r.NumCPU))
+		opts = append(opts, "--cpu", strconv.Itoa(r.NumCPU))
 	}
 	if r.Mem > 0 {
-		opts = append(opts, "--memory", fmt.Sprintf("%d", r.Mem/cmdtypes.MiB))
+		opts = append(opts, "--memory", strconv.Itoa(int(r.Mem/cmdtypes.MiB)))
 	}
 	return opts
 }

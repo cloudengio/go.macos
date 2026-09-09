@@ -165,7 +165,8 @@ func WithTartBinary(tartBinary string) Option {
 	}
 }
 
-// WithResources sets the resource configuration for the tart VM.
+// WithResources sets the resource configuration to apply to the tart VM
+// after it is cloned using 'tart set'.
 func WithResources(resources ResourceConfig) Option {
 	return func(o *options) {
 		o.resources = resources
@@ -376,7 +377,10 @@ func (inst *Instance) Clone(ctx context.Context) error {
 	if !inst.opts.resources.configured() {
 		return nil
 	}
-	return SetResources(ctx, inst.opts.tartBinary, inst.name, inst.opts.resources)
+	if err := SetResources(ctx, inst.opts.tartBinary, inst.name, inst.opts.resources); err != nil {
+		return fmt.Errorf("setting resources for %s: %w", inst.name, err)
+	}
+	return nil
 }
 
 // Delete runs "tart delete <name>" and transitions to StateDeleted.

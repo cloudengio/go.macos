@@ -316,7 +316,8 @@ on demand.
 ```go
 func WithResources(resources ResourceConfig) Option
 ```
-WithResources sets the resource configuration for the tart VM.
+WithResources sets the resource configuration to apply to the tart VM after
+it is cloned using 'tart set'.
 
 
 ```go
