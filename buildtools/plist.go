@@ -39,6 +39,31 @@ type InfoPlist struct {
 	Extra map[string]any `yaml:",inline"`
 }
 
+func ifEmpty(s, def string) string {
+	if len(s) == 0 {
+		return def
+	}
+	return s
+}
+
+// WithDefaults returns a copy of ipl with any empty fields populated with
+// default values derived from the binary name. The filepath.Base of the
+// binary is used as a default for CFBundleName, CFBundleExecutable and
+// CFBundleDisplayName, and "com.example.<base>" for CFBundleIdentifier.
+// CFBundlePackageType is set to "APPL" and LSMinimumSystemVersion to "10.15".
+// CFBundleVersion is set to "0.0.0" if empty.
+func (ipl InfoPlist) WithDefaults(binary string) InfoPlist {
+	base := filepath.Base(binary)
+	ipl.CFBundleIdentifier = ifEmpty(ipl.CFBundleIdentifier, "com.example."+base)
+	ipl.CFBundleName = ifEmpty(ipl.CFBundleName, base)
+	ipl.CFBundleExecutable = ifEmpty(ipl.CFBundleExecutable, base)
+	ipl.CFBundleDisplayName = ifEmpty(ipl.CFBundleDisplayName, base)
+	ipl.CFBundlePackageType = ifEmpty(ipl.CFBundlePackageType, "APPL")
+	ipl.LSMinimumSystemVersion = ifEmpty(ipl.LSMinimumSystemVersion, "10.15")
+	ipl.CFBundleVersion = ifEmpty(ipl.CFBundleVersion, "0.0.0")
+	return ipl
+}
+
 // LaunchAgentPlist represents the contents of a launchd job plist, ie. a
 // LaunchAgent or LaunchDaemon. As for InfoPlist, keys without a field of their
 // own are captured by Extra.

@@ -9,21 +9,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"cloudeng.io/macos/buildtools"
+	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
 type bundle struct {
-	cfg        config
+	cfg        gobundleconfig.T
 	stepRunner *buildtools.StepRunner
 	ap         buildtools.AppBundle
 }
 
-func newBundle(cfg config) bundle {
+func newBundle(cfg gobundleconfig.T) bundle {
 	return bundle{
 		cfg:        cfg,
-		stepRunner: buildtools.NewRunner(),
+		stepRunner: buildtools.NewRunner(buildtools.WithStepVerbose(verbose)),
 		ap: buildtools.AppBundle{
 			Path: cfg.Path,
 			Info: cfg.Info,
@@ -63,7 +63,7 @@ func (b bundle) handleIcons() (func(), error) {
 // distributed to other Macs. Local `build`/`run` still embed the provisioning
 // profile, so entitlements are authorized without it.
 func (b bundle) createAndSign(ctx context.Context, binary string, notarize bool) error {
-	b.stepRunner.AddSteps(b.ap.Clean())
+	b.stepRunner.AddSteps(b.ap.Clean()...)
 	b.stepRunner.AddSteps(b.ap.Create()...)
 	if b.cfg.ProvisioningProfile != "" {
 		profile := os.ExpandEnv(b.cfg.ProvisioningProfile)
@@ -72,20 +72,13 @@ func (b bundle) createAndSign(ctx context.Context, binary string, notarize bool)
 	b.stepRunner.AddSteps(b.ap.WriteInfoPlist(),
 		b.ap.CopyExecutable(binary))
 
-	if mode := b.cfg.executableMode(); mode != 0 {
-		b.stepRunner.AddSteps(b.ap.SetExecutablePermissions(binary, mode))
-	}
-	if mode := b.cfg.macosDirMode(); mode != 0 {
-		b.stepRunner.AddSteps(b.ap.SetMacOSDirPermissions(mode))
-	}
-
 	cleanup, err := b.handleIcons()
 	if err != nil {
 		return fmt.Errorf("error processing icons: %v", err)
 	}
 	defer cleanup()
 
-	if b.cfg.Identity != "" {
+	if b.cfg.SigningConfig.Configured() {
 		signer := b.cfg.Signer()
 		b.stepRunner.AddSteps(
 			b.ap.SignExecutable(signer),
@@ -97,23 +90,25 @@ func (b bundle) createAndSign(ctx context.Context, binary string, notarize bool)
 	// signed bundle with Apple's notary service and staple the ticket so
 	// Gatekeeper accepts it on other Macs. It requires a signed bundle and notary
 	// credentials.
-	if notarize && b.cfg.Notarize {
-		if b.cfg.Identity == "" {
-			return fmt.Errorf("notarize is set but the bundle is not signed: set an 'identity' in the config")
-		}
-		if strings.HasPrefix(b.cfg.Identity, "Apple Development:") {
-			return fmt.Errorf("notarize requires a 'Developer ID Application' identity, but an Apple Development identity (%q) was configured", b.cfg.Identity)
-		}
-		if !b.cfg.Notary.Configured() {
+	if notarize {
+		if !b.cfg.NotaryConfig.Configured() {
 			return fmt.Errorf("notarize is set but no notarization credentials are configured: set a 'notary' section in the config")
 		}
+		if err := b.cfg.ValidateSigning(b.cfg.SigningConfig); err != nil {
+			return err
+		}
 		printf("Submitting %s to Apple notary service (waiting for response)...\n", filepath.Base(b.ap.Path))
-		b.stepRunner.AddSteps(b.ap.Notarize(b.cfg.Notary)...)
+		b.stepRunner.AddSteps(b.ap.Notarize(b.cfg.NotaryConfig)...)
 	}
+
+	b.stepRunner.AddSteps(b.ap.SetExecutablePermissions(binary, b.cfg.Permissions.ExecutableMode()))
+	b.stepRunner.AddSteps(b.ap.SetMacOSDirPermissions(b.cfg.Permissions.MacOSDirMode()))
 
 	var runnerOpts []buildtools.CommandRunnerOption
 	if verbose {
-		runnerOpts = append(runnerOpts, buildtools.WithStdout(os.Stdout), buildtools.WithStderr(os.Stderr))
+		runnerOpts = append(runnerOpts,
+			buildtools.WithStdout(os.Stdout),
+			buildtools.WithStderr(os.Stderr))
 	}
 	results := b.stepRunner.Run(ctx, buildtools.NewCommandRunner(runnerOpts...))
 	for _, r := range results {

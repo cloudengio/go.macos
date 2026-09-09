@@ -127,3 +127,218 @@ func TestPermsWithFileModeTypeBits(t *testing.T) {
 		t.Errorf("file perms = %04o, want %04o", got, want)
 	}
 }
+
+func TestRmdirAll(t *testing.T) {
+	tempDir := t.TempDir()
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	// 1. Valid .app removal
+	appDir := filepath.Join(tempDir, "Test.app")
+	if err := os.MkdirAll(filepath.Join(appDir, "Contents", "MacOS"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	step := buildtools.RmdirAll(appDir)
+	if _, err := step.Run(ctx, runner); err != nil {
+		t.Fatalf("RmdirAll failed: %v", err)
+	}
+	if _, err := os.Stat(appDir); !os.IsNotExist(err) {
+		t.Errorf("expected %q to be removed", appDir)
+	}
+
+	// 2. Valid .app with trailing slash
+	appDirSlash := filepath.Join(tempDir, "Slash.app")
+	if err := os.MkdirAll(appDirSlash, 0700); err != nil {
+		t.Fatal(err)
+	}
+	stepSlash := buildtools.RmdirAll(appDirSlash + "/")
+	if _, err := stepSlash.Run(ctx, runner); err != nil {
+		t.Fatalf("RmdirAll with trailing slash failed: %v", err)
+	}
+	if _, err := os.Stat(appDirSlash); !os.IsNotExist(err) {
+		t.Errorf("expected %q to be removed", appDirSlash)
+	}
+
+	// 3. Non-existent .app directory (should be noop / succeed)
+	stepNonExistent := buildtools.RmdirAll(filepath.Join(tempDir, "NonExistent.app"))
+	if _, err := stepNonExistent.Run(ctx, runner); err != nil {
+		t.Fatalf("RmdirAll on non-existent app should succeed: %v", err)
+	}
+
+	// 4. Non-.app directory (should return ErrorStep)
+	nonAppDir := filepath.Join(tempDir, "regular_dir")
+	stepNonApp := buildtools.RmdirAll(nonAppDir)
+	if _, err := stepNonApp.Run(ctx, runner); err == nil {
+		t.Error("expected RmdirAll on non-.app directory to fail")
+	}
+}
+
+func TestChmodAll(t *testing.T) {
+	tempDir := t.TempDir()
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	// 1. Valid .app chmod
+	appDir := filepath.Join(tempDir, "ChmodTest.app")
+	if err := os.MkdirAll(filepath.Join(appDir, "Contents"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	step := buildtools.ChmodAll(appDir, 0755)
+	if _, err := step.Run(ctx, runner); err != nil {
+		t.Fatalf("ChmodAll failed: %v", err)
+	}
+
+	// 2. Trailing slash
+	stepSlash := buildtools.ChmodAll(appDir+"/", 0700)
+	if _, err := stepSlash.Run(ctx, runner); err != nil {
+		t.Fatalf("ChmodAll with trailing slash failed: %v", err)
+	}
+
+	// 3. Non-existent .app (noop)
+	stepNonExistent := buildtools.ChmodAll(filepath.Join(tempDir, "NonExistent.app"), 0755)
+	if _, err := stepNonExistent.Run(ctx, runner); err != nil {
+		t.Fatalf("ChmodAll on non-existent app should succeed: %v", err)
+	}
+
+	// 4. Non-.app directory (error)
+	stepNonApp := buildtools.ChmodAll(filepath.Join(tempDir, "dir"), 0755)
+	if _, err := stepNonApp.Run(ctx, runner); err == nil {
+		t.Error("expected ChmodAll on non-.app directory to fail")
+	}
+}
+
+func TestFileAndDirExists(t *testing.T) {
+	tempDir := t.TempDir()
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	// Directory exists
+	if _, err := buildtools.DirExists(tempDir).Run(ctx, runner); err != nil {
+		t.Errorf("DirExists failed for existing directory: %v", err)
+	}
+	if _, err := buildtools.DirExists(filepath.Join(tempDir, "nonexistent")).Run(ctx, runner); err == nil {
+		t.Error("DirExists should fail for non-existent directory")
+	}
+
+	// File exists
+	testFile := filepath.Join(tempDir, "exists.txt")
+	if err := os.WriteFile(testFile, []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildtools.FileExists(testFile).Run(ctx, runner); err != nil {
+		t.Errorf("FileExists failed for existing file: %v", err)
+	}
+	if _, err := buildtools.FileExists(filepath.Join(tempDir, "missing.txt")).Run(ctx, runner); err == nil {
+		t.Error("FileExists should fail for non-existent file")
+	}
+}
+
+func TestFileOperationsRenameAndCopy(t *testing.T) {
+	tempDir := t.TempDir()
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	// MkdirAll with empty name
+	if _, err := buildtools.MkdirAll("").Run(ctx, runner); err == nil {
+		t.Error("expected MkdirAll with empty path to fail")
+	}
+
+	// Rename
+	srcFile := filepath.Join(tempDir, "old.txt")
+	dstFile := filepath.Join(tempDir, "new.txt")
+	if err := os.WriteFile(srcFile, []byte("rename test"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildtools.Rename(srcFile, dstFile).Run(ctx, runner); err != nil {
+		t.Fatalf("Rename failed: %v", err)
+	}
+	if _, err := os.Stat(dstFile); err != nil {
+		t.Errorf("expected renamed file to exist: %v", err)
+	}
+
+	// CopyDir
+	srcDir := filepath.Join(tempDir, "src_dir")
+	dstDir := filepath.Join(tempDir, "dst_dir")
+	if err := os.MkdirAll(filepath.Join(srcDir, "sub"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "sub", "file.txt"), []byte("nested"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildtools.CopyDir(srcDir, dstDir).Run(ctx, runner); err != nil {
+		t.Fatalf("CopyDir failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "sub", "file.txt")); err != nil {
+		t.Errorf("expected copied dir file to exist: %v", err)
+	}
+
+	// RSync
+	rsyncDst := filepath.Join(tempDir, "rsync_dst")
+	if err := os.MkdirAll(rsyncDst, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildtools.RSync(srcDir+"/", rsyncDst).Run(ctx, runner); err != nil {
+		t.Fatalf("RSync failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rsyncDst, "sub", "file.txt")); err != nil {
+		t.Errorf("expected rsync synced file to exist: %v", err)
+	}
+}
+
+func TestFileOperationsWriting(t *testing.T) {
+	tempDir := t.TempDir()
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	// WriteFile dry-run and live
+	dryRunner := buildtools.NewCommandRunner(buildtools.WithDryRun(true))
+	writeFile := filepath.Join(tempDir, "write.txt")
+	if _, err := buildtools.WriteFile([]byte("hello"), 0644, writeFile).Run(ctx, dryRunner); err != nil {
+		t.Fatalf("WriteFile dry run failed: %v", err)
+	}
+	if _, err := os.Stat(writeFile); !os.IsNotExist(err) {
+		t.Errorf("dry-run should not write file")
+	}
+	if _, err := buildtools.WriteFile([]byte("hello"), 0644, writeFile).Run(ctx, runner); err != nil {
+		t.Fatalf("WriteFile live failed: %v", err)
+	}
+	data, err := os.ReadFile(writeFile)
+	if err != nil || string(data) != "hello" {
+		t.Errorf("WriteFile content mismatch: %v, %s", err, string(data))
+	}
+
+	// WriteJSONFile
+	jsonFile := filepath.Join(tempDir, "test.json")
+	val := map[string]string{"foo": "bar"}
+	if _, err := buildtools.WriteJSONFile(val, jsonFile).Run(ctx, runner); err != nil {
+		t.Fatalf("WriteJSONFile failed: %v", err)
+	}
+	if _, err := os.Stat(jsonFile); err != nil {
+		t.Errorf("expected json file to exist: %v", err)
+	}
+
+	// WritePlistFile
+	plistFile := filepath.Join(tempDir, "test.plist")
+	plistVal := buildtools.InfoPlist{CFBundleIdentifier: "com.test"}.WithDefaults("test")
+	if _, err := buildtools.WritePlistFile(plistVal, plistFile).Run(ctx, runner); err != nil {
+		t.Fatalf("WritePlistFile failed: %v", err)
+	}
+	if _, err := os.Stat(plistFile); err != nil {
+		t.Errorf("expected plist file to exist: %v", err)
+	}
+}
+
+func TestIsValidIconSetDir(t *testing.T) {
+	ctx := t.Context()
+	runner := buildtools.NewCommandRunner()
+
+	validStep := buildtools.IsValidIconSetDir("MyIcons.iconset")
+	if _, err := validStep.Run(ctx, runner); err != nil {
+		t.Errorf("expected .iconset to be valid: %v", err)
+	}
+
+	invalidStep := buildtools.IsValidIconSetDir("MyIcons.png")
+	if _, err := invalidStep.Run(ctx, runner); err == nil {
+		t.Error("expected .png to fail IsValidIconSetDir")
+	}
+}

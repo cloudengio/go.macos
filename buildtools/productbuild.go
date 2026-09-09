@@ -51,6 +51,9 @@ func (p ProductBuild) ResourcesPath() string {
 // BuildDistribution returns a Step that creates a product archive using productbuild
 // with the specified distribution XML at outputPkgPath.
 func (p ProductBuild) BuildDistribution(outputPkgPath, signingIdentity string) Step {
+	if len(p.BuildDir) == 0 {
+		return ErrorStep(fmt.Errorf("no build dir specified"), "productbuild")
+	}
 	if len(p.GUIXML) == 0 {
 		return ErrorStep(fmt.Errorf("no distribution XML specified"), "productbuild")
 	}

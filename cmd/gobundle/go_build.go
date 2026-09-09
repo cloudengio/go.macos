@@ -10,26 +10,38 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"cloudeng.io/macos/buildtools"
+	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
-func handleGoBuild(ctx context.Context, merged []byte, args []string) error {
-	dashO, rest := consumeBuildArgs(args)
-	binary := determineBuildBinary(dashO, rest)
-	if err := rungo(ctx, append([]string{"build"}, args...)); err != nil {
-		return err
+func handleGoBuild(ctx context.Context, cfg gobundleconfig.T, notarize bool, binary string, args []string) error {
+	dashO, _ := consumeBuildArgs(args)
+	if dashO != "" && isDir(dashO) {
+		cfg.Path = filepath.Join(dashO, cfg.Info.CFBundleExecutable+".app")
 	}
-	if _, err := os.Stat(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
-		return fmt.Errorf("error finding expected binary: %v: %v", binary, err)
-	}
-	cfg, err := configForGoBuild(binary, dashO, merged)
-	if err != nil {
-		return fmt.Errorf("error processing config for go build: %v", err)
+	if cfg.Path == "" {
+		cfg.Path = cfg.Info.CFBundleExecutable + ".app"
 	}
 	b := newBundle(cfg)
-	if err := b.createAndSign(ctx, binary, false); err != nil {
+
+	if fi, err := os.Stat(b.ap.ExecutablePath()); err == nil && fi.Mode().IsRegular() {
+		if err := os.Remove(b.ap.ExecutablePath()); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("error removing existing signed binary: %v", err)
+		}
+	}
+
+	env := buildtools.GoBuildEnvForMacOSVersion(cfg.Info.LSMinimumSystemVersion)
+	if err := rungo(ctx, append([]string{"build"}, args...), env...); err != nil {
 		return err
 	}
-	if err := os.Remove(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
+	if _, err := os.Stat(binary); err != nil {
+		return fmt.Errorf("error finding expected binary: %v: %v", binary, err)
+	}
+	if err := b.createAndSign(ctx, binary, notarize); err != nil {
+		return err
+	}
+	if err := os.Remove(binary); err != nil {
 		return fmt.Errorf("error removing original binary: %v", err)
 	}
 	if err := os.Symlink(b.ap.ExecutablePath(), binary); err != nil {
@@ -37,20 +49,6 @@ func handleGoBuild(ctx context.Context, merged []byte, args []string) error {
 	}
 	printf("Created symlink: %s -> %s\n", binary, b.ap.ExecutablePath())
 	return nil
-}
-
-func configForGoBuild(binary, dashO string, merged []byte) (config, error) {
-	cfg, err := configFromMerged(merged, binary)
-	if err != nil {
-		return config{}, fmt.Errorf("error processing config for go build: %v", err)
-	}
-	if dashO != "" && isDir(dashO) {
-		cfg.Path = filepath.Join(dashO, cfg.Info.CFBundleExecutable+".app")
-	}
-	if cfg.Path == "" {
-		cfg.Path = cfg.Info.CFBundleExecutable + ".app"
-	}
-	return cfg, nil
 }
 
 var buildArgs = map[string]int{
@@ -87,6 +85,11 @@ var buildArgs = map[string]int{
 	"-trimpath":      0,
 	"-toolexec":      1,
 	"-o":             -1,
+}
+
+func getBuildBinaryAbs(args []string) string {
+	dashO, rest := consumeBuildArgs(args)
+	return determineBuildBinary(dashO, rest)
 }
 
 func consumeBuildArgs(args []string) (string, []string) {

@@ -9,26 +9,30 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"cloudeng.io/macos/buildtools"
+	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
-func handleGoInstall(ctx context.Context, merged []byte, args []string) error {
-	_, rest := consumeBuildArgs(args)
-	installDir, binary := deterimineInstallBinary(rest)
+func handleGoInstall(ctx context.Context, cfg gobundleconfig.T, notarize bool, binary string, args []string) error {
+	installDir := filepath.Dir(binary)
+	if len(installDir) == 0 {
+		return fmt.Errorf("cannot determine install directory")
+	}
+	cfg.Path = filepath.Join(installDir, cfg.Info.CFBundleName+".app")
+
 	if err := os.Remove(binary); err != nil && !os.IsNotExist(err) { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error removing original binary: %v", err)
 	}
-	if err := rungo(ctx, append([]string{"install"}, args...)); err != nil {
+	env := buildtools.GoBuildEnvForMacOSVersion(cfg.Info.LSMinimumSystemVersion)
+	if err := rungo(ctx, append([]string{"install"}, args...), env...); err != nil {
 		return err
 	}
 	if _, err := os.Stat(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error finding expected binary: %v: %v", binary, err)
 	}
-	cfg, err := configForGoInstall(installDir, binary, merged)
-	if err != nil {
-		return fmt.Errorf("error processing config for go install: %v", err)
-	}
 	b := newBundle(cfg)
-	if err := b.createAndSign(ctx, binary, true); err != nil {
+	if err := b.createAndSign(ctx, binary, notarize); err != nil {
 		return err
 	}
 	if err := os.Remove(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
@@ -40,7 +44,7 @@ func handleGoInstall(ctx context.Context, merged []byte, args []string) error {
 	return nil
 }
 
-func deterimineInstallBinary(rest []string) (string, string) {
+func getInstallBinaryAbs(rest []string) string {
 	// Executables are installed in the directory named by the GOBIN environment
 	// variable, which defaults to $GOPATH/bin or $HOME/go/bin if the GOPATH
 	// environment variable is not set. Executables in $GOROOT
@@ -49,29 +53,15 @@ func deterimineInstallBinary(rest []string) (string, string) {
 	binary = filepath.Base(binary)
 	installDir := os.Getenv("GOBIN")
 	if len(installDir) > 0 && isDir(installDir) {
-		return installDir, filepath.Join(installDir, binary)
+		return filepath.Join(installDir, binary)
 	}
 	gopath := os.Getenv("GOPATH")
 	if len(gopath) > 0 && isDir(filepath.Join(gopath, "bin")) {
-		return filepath.Join(gopath, "bin"), filepath.Join(gopath, "bin", binary)
+		return filepath.Join(gopath, "bin", binary)
 	}
 	home := os.Getenv("HOME")
 	if len(home) > 0 {
-		return filepath.Join(home, "go", "bin"), filepath.Join(home, "go", "bin", binary)
+		return filepath.Join(home, "go", "bin", binary)
 	}
-	return "", binary
-}
-
-func configForGoInstall(installDir, binary string, merged []byte) (config, error) {
-	if len(installDir) == 0 {
-		return config{}, fmt.Errorf("cannot determine install directory")
-	}
-	cfg, err := configFromMerged(merged, binary)
-	if err != nil {
-		return config{}, fmt.Errorf("error processing config for go install: %v", err)
-	}
-	if cfg.Path == "" {
-		cfg.Path = filepath.Join(installDir, filepath.Base(binary)+".app")
-	}
-	return cfg, nil
+	return binary
 }

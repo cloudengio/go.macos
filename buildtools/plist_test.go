@@ -129,3 +129,134 @@ func TestCommandRunnerStdoutStderr(t *testing.T) {
 		t.Errorf("stdoutBuf = %q, want %q", got, want)
 	}
 }
+
+func TestInfoPlistWithDefaults(t *testing.T) {
+	// 1. Defaults on empty InfoPlist
+	empty := buildtools.InfoPlist{}
+	def := empty.WithDefaults("/usr/local/bin/my-app")
+	if got, want := def.CFBundleExecutable, "my-app"; got != want {
+		t.Errorf("CFBundleExecutable = %q, want %q", got, want)
+	}
+	if got, want := def.CFBundleName, "my-app"; got != want {
+		t.Errorf("CFBundleName = %q, want %q", got, want)
+	}
+	if got, want := def.CFBundleDisplayName, "my-app"; got != want {
+		t.Errorf("CFBundleDisplayName = %q, want %q", got, want)
+	}
+	if got, want := def.CFBundleIdentifier, "com.example.my-app"; got != want {
+		t.Errorf("CFBundleIdentifier = %q, want %q", got, want)
+	}
+	if got, want := def.CFBundlePackageType, "APPL"; got != want {
+		t.Errorf("CFBundlePackageType = %q, want %q", got, want)
+	}
+	if got, want := def.LSMinimumSystemVersion, "10.15"; got != want {
+		t.Errorf("LSMinimumSystemVersion = %q, want %q", got, want)
+	}
+	if got, want := def.CFBundleVersion, "0.0.0"; got != want {
+		t.Errorf("CFBundleVersion = %q, want %q", got, want)
+	}
+
+	// 2. Preserves existing values
+	custom := buildtools.InfoPlist{
+		CFBundleIdentifier:     "com.custom.id",
+		CFBundleName:           "CustomName",
+		CFBundleExecutable:     "custom_bin",
+		CFBundlePackageType:    "XPC!",
+		LSMinimumSystemVersion: "15.0",
+		CFBundleDisplayName:    "CustomDisplay",
+		CFBundleVersion:        "1.2.3",
+	}
+	res := custom.WithDefaults("other")
+	if res.CFBundleIdentifier != "com.custom.id" || res.CFBundleName != "CustomName" ||
+		res.CFBundleExecutable != "custom_bin" || res.CFBundlePackageType != "XPC!" ||
+		res.LSMinimumSystemVersion != "15.0" || res.CFBundleDisplayName != "CustomDisplay" ||
+		res.CFBundleVersion != "1.2.3" {
+		t.Errorf("WithDefaults did not preserve existing fields: %+v", res)
+	}
+}
+
+func TestInfoPlistValidations(t *testing.T) {
+	// Valid InfoPlist
+	ipl := buildtools.InfoPlist{}.WithDefaults("app")
+	if err := ipl.Validate(); err != nil {
+		t.Errorf("expected valid InfoPlist, got %v", err)
+	}
+
+	// Missing field
+	badIPL := ipl
+	badIPL.CFBundleIdentifier = ""
+	if err := badIPL.Validate(); err == nil {
+		t.Error("expected missing CFBundleIdentifier to fail Validate")
+	}
+
+	// XPCService validation
+	iplWithXPC := ipl
+	iplWithXPC.XPCService = &buildtools.XPCServicePlist{ServiceName: "com.test.service"}
+	if err := iplWithXPC.Validate(); err != nil {
+		t.Errorf("valid XPCService failed: %v", err)
+	}
+	iplWithBadXPC := ipl
+	iplWithBadXPC.XPCService = &buildtools.XPCServicePlist{}
+	if err := iplWithBadXPC.Validate(); err == nil {
+		t.Error("expected empty ServiceName to fail Validate")
+	}
+
+	// NSExtension validation
+	iplWithExt := ipl
+	iplWithExt.NSExtension = &buildtools.NSExtensionPlist{
+		NSExtensionPointIdentifier: "com.apple.Safari.web-extension",
+		NSExtensionPrincipalClass:  "Handler",
+	}
+	if err := iplWithExt.Validate(); err != nil {
+		t.Errorf("valid NSExtension failed: %v", err)
+	}
+	iplWithBadExt := ipl
+	iplWithBadExt.NSExtension = &buildtools.NSExtensionPlist{}
+	if err := iplWithBadExt.Validate(); err == nil {
+		t.Error("expected empty NSExtension to fail Validate")
+	}
+}
+
+func TestPlistMarshalYAMLAndPlist(t *testing.T) {
+	ipl := buildtools.InfoPlist{
+		CFBundleShortVersionString: "1.0",
+		XPCService:                 &buildtools.XPCServicePlist{ServiceName: "xpc"},
+		NSExtension:                &buildtools.NSExtensionPlist{NSExtensionPointIdentifier: "id", NSExtensionPrincipalClass: "cls"},
+	}.WithDefaults("app")
+
+	if _, err := ipl.MarshalPlist(); err != nil {
+		t.Errorf("InfoPlist.MarshalPlist failed: %v", err)
+	}
+	if _, err := ipl.MarshalYAML(); err != nil {
+		t.Errorf("InfoPlist.MarshalYAML failed: %v", err)
+	}
+
+	xpc := buildtools.XPCServicePlist{ServiceName: "xpc"}
+	if _, err := xpc.MarshalPlist(); err != nil {
+		t.Errorf("XPCServicePlist.MarshalPlist failed: %v", err)
+	}
+	if _, err := xpc.MarshalYAML(); err != nil {
+		t.Errorf("XPCServicePlist.MarshalYAML failed: %v", err)
+	}
+
+	ext := buildtools.NSExtensionPlist{NSExtensionPointIdentifier: "id", NSExtensionPrincipalClass: "cls"}
+	if _, err := ext.MarshalPlist(); err != nil {
+		t.Errorf("NSExtensionPlist.MarshalPlist failed: %v", err)
+	}
+	if _, err := ext.MarshalYAML(); err != nil {
+		t.Errorf("NSExtensionPlist.MarshalYAML failed: %v", err)
+	}
+
+	lap := buildtools.LaunchAgentPlist{
+		Label:            "label",
+		ProgramArguments: []string{"/bin/echo"},
+		KeepAlive:        true,
+		RunAtLoad:        true,
+	}
+	if _, err := lap.MarshalPlist(); err != nil {
+		t.Errorf("LaunchAgentPlist.MarshalPlist failed: %v", err)
+	}
+	if _, err := lap.MarshalYAML(); err != nil {
+		t.Errorf("LaunchAgentPlist.MarshalYAML failed: %v", err)
+	}
+}

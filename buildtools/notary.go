@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // NotaryConfig holds the credentials used to submit a bundle to Apple's
@@ -47,6 +48,29 @@ func (n NotaryConfig) authArgs() ([]string, error) {
 		return []string{"--apple-id", n.AppleID, "--team-id", n.TeamID, "--password", n.Password}, nil
 	}
 	return nil, fmt.Errorf("notary: no credentials: set keychain_profile, or apple_id+team_id+password")
+}
+
+// ValidateSigning checks that the signing configuration is compatible
+// with notarization. Notarization requires that the bundle is signed with a
+// Developer ID identity, so this checks that the signing configuration is
+// present and that the identity is not an Apple Development or Mac Developer
+// identity.
+func (n NotaryConfig) ValidateSigning(signing SigningConfig) error {
+	if !n.Configured() {
+		return nil
+	}
+	if !signing.Configured() || signing.Identity == "" || signing.Identity == "-" {
+		return fmt.Errorf("notarize is set but the bundle is not signed: set an 'identity' in the config")
+	}
+	if strings.HasPrefix(signing.Identity, "Apple Development:") || strings.HasPrefix(signing.Identity, "Mac Developer:") {
+		return fmt.Errorf("notarize requires a 'Developer ID Application' identity, but an Apple Development identity (%q) was configured", signing.Identity)
+	}
+	return nil
+}
+
+// ValidateSigningConfig is an alias for ValidateSigning.
+func (n NotaryConfig) ValidateSigningConfig(signing SigningConfig) error {
+	return n.ValidateSigning(signing)
 }
 
 // Notarize returns the steps that submit the bundle to Apple's notarization

@@ -236,3 +236,143 @@ func TestAppBundleSetExecutablePermissionsErrors(t *testing.T) {
 		t.Errorf("custom_bin permissions = %04o, want %04o", got, want)
 	}
 }
+
+func setupTestAppBundle(t *testing.T) (buildtools.AppBundle, string) {
+	t.Helper()
+	tempDir := t.TempDir()
+	bundle := buildtools.AppBundle{
+		Path: filepath.Join(tempDir, "MyApp.app"),
+		Info: buildtools.InfoPlist{
+			CFBundleIdentifier: "com.example.myapp",
+			CFBundleExecutable: "myapp",
+			CFBundleIconFile:   "AppIcon.icns",
+		}.WithDefaults("myapp"),
+	}
+	ctx := t.Context()
+	runner := buildtools.NewCommandRunner()
+	for _, s := range bundle.Create() {
+		if _, err := s.Run(ctx, runner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return bundle, tempDir
+}
+
+func TestAppBundlePathsAndFiles(t *testing.T) {
+	bundle, _ := setupTestAppBundle(t)
+
+	if got, want := bundle.ExecutablePath(), filepath.Join(bundle.Path, "Contents", "MacOS", "myapp"); got != want {
+		t.Errorf("ExecutablePath = %q, want %q", got, want)
+	}
+	if got, want := bundle.Contents("Frameworks", "lib.dylib"), filepath.Join(bundle.Path, "Contents", "Frameworks", "lib.dylib"); got != want {
+		t.Errorf("Contents = %q, want %q", got, want)
+	}
+	if got, want := bundle.Resources("config.json"), filepath.Join(bundle.Path, "Contents", "Resources", "config.json"); got != want {
+		t.Errorf("Resources = %q, want %q", got, want)
+	}
+}
+
+func TestAppBundleCopyExecutableAndProfile(t *testing.T) {
+	bundle, tempDir := setupTestAppBundle(t)
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	srcExe := filepath.Join(tempDir, "built_myapp")
+	if err := os.WriteFile(srcExe, []byte("binary"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bundle.CopyExecutable(srcExe).Run(ctx, runner); err != nil {
+		t.Fatalf("CopyExecutable failed: %v", err)
+	}
+	if _, err := os.Stat(bundle.ExecutablePath()); err != nil {
+		t.Errorf("expected copied executable to exist: %v", err)
+	}
+	if _, err := bundle.CopyExecutable("").Run(ctx, runner); err == nil {
+		t.Error("expected CopyExecutable with empty src to fail")
+	}
+
+	profFile := filepath.Join(tempDir, "embedded.mobileprovision")
+	if err := os.WriteFile(profFile, []byte("profile"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bundle.InstallProvisioningProfile(profFile).Run(ctx, runner); err != nil {
+		t.Fatalf("InstallProvisioningProfile failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(bundle.Path, "Contents", "embedded.provisionprofile")); err != nil {
+		t.Errorf("expected embedded profile to exist: %v", err)
+	}
+	if _, err := bundle.InstallProvisioningProfile("").Run(ctx, runner); err == nil {
+		t.Error("expected InstallProvisioningProfile with empty path to fail")
+	}
+}
+
+func TestAppBundleCopyIcons(t *testing.T) {
+	bundle, tempDir := setupTestAppBundle(t)
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	dummyIconFile := filepath.Join(tempDir, "AppIcon.icns")
+	if err := os.WriteFile(dummyIconFile, []byte("icns"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	iconSet := buildtools.IconSet{Dir: tempDir, Name: "AppIcon.icns"}
+	if _, err := bundle.CopyIcons(iconSet)[0].Run(ctx, runner); err != nil {
+		t.Fatalf("CopyIcons failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(bundle.Path, "Contents", "Resources", "AppIcon.icns")); err != nil {
+		t.Errorf("expected AppIcon.icns in Resources: %v", err)
+	}
+	if _, err := bundle.CopyIcons()[0].Run(ctx, runner); err != nil {
+		t.Errorf("expected empty CopyIcons to be noop: %v", err)
+	}
+	noIconBundle := bundle
+	noIconBundle.Info.CFBundleIconFile = ""
+	if _, err := noIconBundle.CopyIcons(iconSet)[0].Run(ctx, runner); err != nil {
+		t.Errorf("expected CopyIcons with no CFBundleIconFile to be noop: %v", err)
+	}
+}
+
+func TestAppBundleSigningAndClean(t *testing.T) {
+	bundle, _ := setupTestAppBundle(t)
+	runner := buildtools.NewCommandRunner()
+	dryRunner := buildtools.NewCommandRunner(buildtools.WithDryRun(true))
+	ctx := t.Context()
+
+	signer := buildtools.NewSigner("Developer ID Application: Test", nil, nil, nil)
+	signSteps := []buildtools.Step{
+		bundle.Sign(signer),
+		bundle.SignExecutable(signer),
+		bundle.SignContents(signer, "Resources", "AppIcon.icns"),
+		bundle.VerifyContents(signer, "Resources", "AppIcon.icns"),
+		bundle.SPCtlAsses(),
+	}
+	for i, s := range signSteps {
+		res, err := s.Run(ctx, dryRunner)
+		if err != nil {
+			t.Fatalf("signStep %d failed: %v", i, err)
+		}
+		if res.Executable() == "" {
+			t.Errorf("step %d executable should not be empty", i)
+		}
+	}
+	for _, s := range bundle.VerifySignatures(signer) {
+		if _, err := s.Run(ctx, dryRunner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := bundle.SignContents(signer).Run(ctx, runner); err == nil {
+		t.Error("expected SignContents with empty dst to fail")
+	}
+	if _, err := bundle.VerifyContents(signer).Run(ctx, runner); err == nil {
+		t.Error("expected VerifyContents with empty dst to fail")
+	}
+
+	for _, s := range bundle.Clean() {
+		if _, err := s.Run(ctx, runner); err != nil {
+			t.Fatalf("clean step failed: %v", err)
+		}
+	}
+	if _, err := os.Stat(bundle.Path); !os.IsNotExist(err) {
+		t.Errorf("expected bundle %q to be removed by Clean", bundle.Path)
+	}
+}

@@ -4,7 +4,7 @@
 
 //go:build darwin
 
-//go:generate go run builder.go
+//go:generate go run bundle_builder.go
 
 package main
 

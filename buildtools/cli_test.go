@@ -7,7 +7,10 @@ package buildtools_test
 import (
 	"context"
 	"errors"
+	"flag"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"cloudeng.io/macos/buildtools"
@@ -237,5 +240,102 @@ macos_dir_permissions: "rwxr-xr-x"
 	}
 	if got, want := cfg2.MacOSDirMode(), fs.FileMode(0755); got != want {
 		t.Errorf("cfg2.MacOSDirMode() = %04o, want %04o", got, want)
+	}
+}
+
+func TestCommonFlagsAndRunnerOptions(t *testing.T) {
+	tempDir := t.TempDir()
+	cfgFile := filepath.Join(tempDir, "config.yaml")
+	if err := os.WriteFile(cfgFile, []byte("bundle: ./myapp.app\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	flags := buildtools.CommonFlags{
+		DryRun:     true,
+		Timing:     true,
+		ConfigFile: cfgFile,
+		Verbose:    true,
+	}
+
+	// CommandRunnerOptions
+	opts := flags.CommandRunnerOptions()
+	if len(opts) != 2 {
+		t.Errorf("expected 2 CommandRunner options (DryRun + Timing), got %d", len(opts))
+	}
+	runner := buildtools.NewCommandRunner(opts...)
+	if !runner.DryRun() {
+		t.Error("expected DryRun to be true on runner")
+	}
+
+	// ParseFile
+	var parsed struct {
+		Bundle string `yaml:"bundle"`
+	}
+	if err := flags.ParseFile(&parsed); err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+	if parsed.Bundle != "./myapp.app" {
+		t.Errorf("parsed.Bundle = %q, want ./myapp.app", parsed.Bundle)
+	}
+
+	// PrintResult
+	res := buildtools.RunResult{
+		buildtools.NewStepResult("echo", []string{"hi"}, []byte("hi\n"), nil),
+	}
+	if err := flags.PrintResult(parsed, res); err != nil {
+		t.Errorf("PrintResult failed: %v", err)
+	}
+}
+
+func TestRegisterFlagsOrDie(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	type myFlags struct {
+		buildtools.CommonFlags
+	}
+	var f myFlags
+	// Should not panic on valid struct
+	buildtools.RegisterFlagsOrDie(&f, fs)
+
+	// Should panic on non-struct
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected RegisterFlagsOrDie to panic on non-struct")
+		}
+	}()
+	notAStruct := 42
+	buildtools.RegisterFlagsOrDie(&notAStruct, fs)
+}
+
+func TestSigningConfigMethods(t *testing.T) {
+	// 1. Configured
+	scEmpty := buildtools.SigningConfig{}
+	if scEmpty.Configured() {
+		t.Error("empty SigningConfig should not be Configured()")
+	}
+
+	scIdentity := buildtools.SigningConfig{Identity: "Test Identity"}
+	if !scIdentity.Configured() {
+		t.Error("SigningConfig with Identity should be Configured()")
+	}
+
+	scNoIdentity := buildtools.SigningConfig{
+		CodesignArguments:   []string{"--force"},
+		Entitlements:        &buildtools.Entitlements{},
+		PerFileEntitlements: &buildtools.PerFileEntitlements{},
+	}
+	if scNoIdentity.Configured() {
+		t.Error("SigningConfig without Identity should not be Configured()")
+	}
+
+	// 2. Signer()
+	signer := scIdentity.Signer()
+	dryRunner := buildtools.NewCommandRunner(buildtools.WithDryRun(true))
+	step := signer.SignPath("/tmp/test.app", "")
+	res, err := step.Run(t.Context(), dryRunner)
+	if err != nil {
+		t.Fatalf("signer.SignPath failed: %v", err)
+	}
+	if res.Executable() != "codesign" {
+		t.Errorf("executable = %q, want codesign", res.Executable())
 	}
 }

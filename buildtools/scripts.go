@@ -33,15 +33,20 @@ func (f File) OneOf() string {
 	return f.Src
 }
 
-// RewriteHOME rewrites any occurrences of $HOME in the source and destination
+func rewriteHome(s string) string {
+	s = strings.ReplaceAll(s, "${HOME}", "${TARGET_HOME}")
+	return strings.ReplaceAll(s, "$HOME", "${TARGET_HOME}")
+}
+
+// RewriteHOME rewrites any occurrences of $HOME or ${HOME} in the source and destination
 // paths to ${TARGET_HOME} which is set in the bash script preamble.
 // Use this with the BashInstallPreamble to access the current logged in user's home
 // directory since $HOME does not refer to the user's home directory from within
 // the installer environment.
 func (f File) RewriteHOME() File {
-	f.Src = strings.ReplaceAll(f.Src, "$HOME", "${TARGET_HOME}")
-	f.DstLocal = strings.ReplaceAll(f.DstLocal, "$HOME", "${TARGET_HOME}")
-	f.DstSystem = strings.ReplaceAll(f.DstSystem, "$HOME", "${TARGET_HOME}")
+	f.Src = rewriteHome(f.Src)
+	f.DstLocal = rewriteHome(f.DstLocal)
+	f.DstSystem = rewriteHome(f.DstSystem)
 	return f
 }
 

@@ -68,6 +68,9 @@ func (b AppBundle) WriteInfoPlistGitBuild(_ context.Context, git Git) []Step {
 
 // WriteInfoPlist returns the step required to write the Info.plist file for the app bundle.
 func (b AppBundle) WriteInfoPlist() Step {
+	if err := b.Info.Validate(); err != nil {
+		return ErrorStep(err, "writeInfoPlist", filepath.Join(b.Path, "Contents", "Info.plist"))
+	}
 	return writeInfoPlist(filepath.Join(b.Path, "Contents", "Info.plist"), b.Info)
 }
 
@@ -92,10 +95,14 @@ func (b AppBundle) CopyExecutable(src string) Step {
 }
 
 // SetExecutablePermissions returns a Step that sets the permissions of the
-// executable referenced in the Info.plist within the app bundle. If
-// Info.CFBundleExecutable is not set and src is provided, filepath.Base(src)
-// is used. If both are empty, it returns an ErrorStep.
+// executable referenced in the Info.plist within the app bundle. If the
+// permissions are 0, it returns a NoopStep. Otherwise, if Info.CFBundleExecutable
+// is not set and src is provided, filepath.Base(src) is used. If both are empty,
+// it returns an ErrorStep.
 func (b AppBundle) SetExecutablePermissions(src string, perms fs.FileMode) Step {
+	if perms == 0 {
+		return NoopStep("no permissions specified, skipping chmod")
+	}
 	exe := b.Info.CFBundleExecutable
 	if exe == "" && src != "" {
 		exe = filepath.Base(src)
@@ -108,8 +115,11 @@ func (b AppBundle) SetExecutablePermissions(src string, perms fs.FileMode) Step 
 }
 
 // SetMacOSDirPermissions returns a Step that sets the permissions of the MacOS
-// directory
+// directory. If the permissions are 0, it returns a NoopStep.
 func (b AppBundle) SetMacOSDirPermissions(perms fs.FileMode) Step {
+	if perms == 0 {
+		return NoopStep("no permissions specified, skipping chmod")
+	}
 	dst := filepath.Join(b.Path, "Contents", "MacOS")
 	return Perms(dst, perms)
 }
@@ -137,9 +147,13 @@ func (b AppBundle) InstallProvisioningProfile(profile string) Step {
 	return Copy(profile, dst)
 }
 
-// Clean returns a Step that removes the app bundle directory and all its contents.
-func (b AppBundle) Clean() Step {
-	return RmdirAll(b.Path)
+// Clean returns Steps that removes the app bundle directory and all its contents.
+// The permissions of the app bundle directory are set to 0700 before removal to
+// ensure that it can be deleted.
+func (b AppBundle) Clean() []Step {
+	return []Step{
+		ChmodAll(b.Path, 0700),
+		RmdirAll(b.Path)}
 }
 
 // SignContents returns the step required to sign a file within the app bundle,
