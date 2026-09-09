@@ -57,11 +57,11 @@ func (b bundle) handleIcons() (func(), error) {
 	}, nil
 }
 
-// createAndSign builds and signs the bundle. notarize requests notarization
-// (only honored when the config also sets notarize: true); it is passed true
-// only for `install`, since notarization is slow and only matters for bundles
-// distributed to other Macs. Local `build`/`run` still embed the provisioning
-// profile, so entitlements are authorized without it.
+// createAndSign builds and signs the bundle. notarize requests notarization;
+// since notarization is slow and only matters for bundles distributed to
+// other Macs the --notarize flag is required to enable it.
+// Local `build`/`run` still embed the provisioning profile, so entitlements
+// are authorized without it.
 func (b bundle) createAndSign(ctx context.Context, binary string, notarize bool) error {
 	b.stepRunner.AddSteps(b.ap.Clean()...)
 	b.stepRunner.AddSteps(b.ap.Create()...)

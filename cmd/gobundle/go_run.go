@@ -25,7 +25,7 @@ func runCommand(ctx context.Context, binary string, args []string) error {
 
 func handleGoRun(ctx context.Context, cfg gobundleconfig.T, notarize bool, args []string) {
 	if slices.Contains(args, "-exec") {
-		exit(1, "cannot use -exec with gosign\n")
+		exit(1, "cannot use -exec with gorun\n")
 	}
 	if len(args) == 0 {
 		rungoExit(ctx, "run")

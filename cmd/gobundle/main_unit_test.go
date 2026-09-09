@@ -5,33 +5,43 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
-	"cloudeng.io/cmdutil/flags"
 	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
-func TestParseFlagsNormal(t *testing.T) {
-	origArgs := os.Args
-	defer func() { os.Args = origArgs }()
-
-	os.Args = []string{"gobundle", "--verbose", "--shared-config", "shared.yaml", "build", "."}
-	cmdFs := flag.NewFlagSet("gobundle", flag.ContinueOnError)
-	var lf localFlags
-	if err := flags.RegisterFlagsInStruct(cmdFs, "cmd", &lf, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	execBin, execArgs, err := parseFlags(cmdFs)
+// parseFlagsFor runs parseFlags over the given command line, restoring os.Args
+// afterwards. parseFlags reads os.Args itself and builds its own flag sets, so
+// that is the only way to drive it.
+func parseFlagsFor(t *testing.T, args ...string) (string, []string, *flag.FlagSet, *localFlags) {
+	t.Helper()
+	orig := os.Args
+	t.Cleanup(func() { os.Args = orig })
+	os.Args = args
+	execBin, execArgs, cmdFs, lf, err := parseFlags()
 	if err != nil {
 		t.Fatalf("parseFlags failed: %v", err)
 	}
+	if cmdFs == nil || lf == nil {
+		t.Fatalf("parseFlags returned cmdFs=%v lf=%v, want both", cmdFs, lf)
+	}
+	return execBin, execArgs, cmdFs, lf
+}
+
+func TestParseFlagsNormal(t *testing.T) {
+	execBin, execArgs, cmdFs, lf := parseFlagsFor(t,
+		"gobundle", "--verbose", "--shared-config", "shared.yaml", "build", ".")
+
 	if execBin != "" {
 		t.Errorf("expected empty execBinary, got %q", execBin)
 	}
@@ -44,31 +54,25 @@ func TestParseFlagsNormal(t *testing.T) {
 	if lf.SharedConfig != "shared.yaml" {
 		t.Errorf("SharedConfig = %q, want shared.yaml", lf.SharedConfig)
 	}
-	if got := cmdFs.Args(); len(got) != 2 || got[0] != "build" || got[1] != "." {
-		t.Errorf("cmdFs.Args = %v, want [build, .]", got)
+	if lf.Notarize {
+		t.Error("expected Notarize to be false, it was not given")
+	}
+	// What is left over is the go command line, which main passes to
+	// parseGoArgs.
+	if got, want := cmdFs.Args(), []string{"build", "."}; !slices.Equal(got, want) {
+		t.Errorf("cmdFs.Args = %v, want %v", got, want)
 	}
 }
 
 func TestParseFlagsSignThenRun(t *testing.T) {
-	origArgs := os.Args
-	defer func() { os.Args = origArgs }()
+	execBin, execArgs, cmdFs, lf := parseFlagsFor(t,
+		"gobundle", "/path/to/binary", "--verbose", "--notarize", signThenRunVerb, "arg1", "arg2")
 
-	os.Args = []string{"gobundle", "/path/to/binary", "--verbose", "--notarize", signThenRunVerb, "arg1", "arg2"}
-	cmdFs := flag.NewFlagSet("gobundle", flag.ContinueOnError)
-	var lf localFlags
-	if err := flags.RegisterFlagsInStruct(cmdFs, "cmd", &lf, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	execBin, execArgs, err := parseFlags(cmdFs)
-	if err != nil {
-		t.Fatalf("parseFlags failed: %v", err)
-	}
 	if execBin != "/path/to/binary" {
 		t.Errorf("execBin = %q, want /path/to/binary", execBin)
 	}
-	if len(execArgs) != 2 || execArgs[0] != "arg1" || execArgs[1] != "arg2" {
-		t.Errorf("execArgs = %v, want [arg1, arg2]", execArgs)
+	if got, want := execArgs, []string{"arg1", "arg2"}; !slices.Equal(got, want) {
+		t.Errorf("execArgs = %v, want %v", got, want)
 	}
 	if !lf.Verbose {
 		t.Error("expected Verbose to be true")
@@ -76,29 +80,99 @@ func TestParseFlagsSignThenRun(t *testing.T) {
 	if !lf.Notarize {
 		t.Error("expected Notarize to be true")
 	}
+	// The flag set returned is the one parsed from after the binary, so what
+	// remains starts at the verb.
+	if got, want := cmdFs.Args(), []string{signThenRunVerb, "arg1", "arg2"}; !slices.Equal(got, want) {
+		t.Errorf("cmdFs.Args = %v, want %v", got, want)
+	}
 }
 
-func TestParseFlagsErrors(t *testing.T) {
-	origArgs := os.Args
-	defer func() { os.Args = origArgs }()
+// TestParseFlagsSignThenRunUsesAFreshFlagSet verifies that the flags reported
+// for the sign-then-run form come only from the second parse. parseFlags parses
+// twice, and a flag.FlagSet carries values and the record of which flags were
+// set from one Parse to the next, so reusing the first set would report
+// --verbose here even though it appears before the binary and is therefore not
+// part of the command line that form describes.
+func TestParseFlagsSignThenRunUsesAFreshFlagSet(t *testing.T) {
+	_, _, _, lf := parseFlagsFor(t,
+		"gobundle", "--verbose", "/path/to/binary", signThenRunVerb, "arg1")
 
-	// Invalid flag in normal mode
-	os.Args = []string{"gobundle", "--unknown-flag"}
-	cmdFs := flag.NewFlagSet("gobundle", flag.ContinueOnError)
-	var lf localFlags
-	_ = flags.RegisterFlagsInStruct(cmdFs, "cmd", &lf, nil, nil)
-	_, _, err := parseFlags(cmdFs)
-	if err == nil {
-		t.Error("expected error for unknown flag in normal mode")
+	if lf.Verbose {
+		t.Error("Verbose was carried over from the first parse")
 	}
+}
 
-	// Invalid flag in sign-then-run mode
-	os.Args = []string{"gobundle", "/path/to/bin", "--unknown-flag", signThenRunVerb}
-	cmdFs = flag.NewFlagSet("gobundle", flag.ContinueOnError)
-	_ = flags.RegisterFlagsInStruct(cmdFs, "cmd", &lf, nil, nil)
-	_, _, err = parseFlags(cmdFs)
-	if err == nil {
-		t.Error("expected error for unknown flag in sign-then-run mode")
+// captureStderr collects what fn writes to os.Stderr. flag writes its
+// diagnostics there, and resolves the destination when it writes, so
+// redirecting for the duration of the call is enough.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	orig := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	collected := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		collected <- buf.String()
+	}()
+	fn()
+	os.Stderr = orig
+	w.Close()
+	return <-collected
+}
+
+// TestParseFlagsErrors covers a flag that cannot be parsed. createFS builds its
+// flag sets with flag.ContinueOnError, so this is reported to the caller rather
+// than ending the process; both parses are covered, the second of which runs
+// only for the sign-then-run form.
+func TestParseFlagsErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"in the first parse", []string{"gobundle", "--unknown-flag"}},
+		{"in the second parse", []string{"gobundle", "/path/to/bin", "--unknown-flag", signThenRunVerb}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			orig := os.Args
+			t.Cleanup(func() { os.Args = orig })
+			os.Args = tc.args
+
+			var (
+				execBin  string
+				execArgs []string
+				cmdFs    *flag.FlagSet
+				lf       *localFlags
+				err      error
+			)
+			stderr := captureStderr(t, func() {
+				execBin, execArgs, cmdFs, lf, err = parseFlags()
+			})
+
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if got, want := err.Error(), "unknown-flag"; !strings.Contains(got, want) {
+				t.Errorf("error %q does not name %q", got, want)
+			}
+			// Nothing usable accompanies the error: main tests err first and
+			// must not be handed a half parsed flag set.
+			if execBin != "" || execArgs != nil || cmdFs != nil || lf != nil {
+				t.Errorf("got execBin=%q execArgs=%v cmdFs=%v lf=%v, want all zero",
+					execBin, execArgs, cmdFs, lf)
+			}
+			// The flag package reports what was wrong, and follows it with
+			// the usage message.
+			for _, want := range []string{"not defined", "Usage of gobundle"} {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("stderr %q does not contain %q", stderr, want)
+				}
+			}
+		})
 	}
 }
 
@@ -439,6 +513,9 @@ func runSubprocessCase(c string) {
 	case "main_noargs":
 		os.Args = []string{"gobundle"}
 		main()
+	case "main_badflag":
+		os.Args = []string{"gobundle", "--unknown-flag"}
+		main()
 	}
 }
 
@@ -466,6 +543,9 @@ func TestSubprocessHelpers(t *testing.T) {
 		{"main_show_config", "main_show_config", 0},
 		{"main_help", "main_help", 1},
 		{"main_noargs", "main_noargs", 2},
+		// A flag that cannot be parsed reaches main as an error, which it
+		// treats as a request for help; printHelpAndExit exits 1.
+		{"main_badflag", "main_badflag", 1},
 	}
 
 	for _, tc := range cases {

@@ -46,22 +46,29 @@ type localFlags struct {
 // that the binary should be signed and optionally notarized and then executed.
 const signThenRunVerb = "sign-then-run"
 
-func parseFlags(fs *flag.FlagSet) (execBinary string, execArgs []string, err error) {
-	if err := fs.Parse(os.Args[1:]); err != nil {
+// parseFlags parses os.Args. It creates the flag sets it parses into rather
+// than accepting one, because the sign-then-run form is parsed from a
+// different starting point and a flag.FlagSet cannot be reused for that: Parse
+// does not reset the values or the record of which flags were set, so a second
+// parse would inherit both from the first.
+func parseFlags() (execBinary string, execArgs []string, cmdFs *flag.FlagSet, lf *localFlags, err error) {
+	cmdFs, lf = createFS()
+	if err := cmdFs.Parse(os.Args[1:]); err != nil {
 		// command line is of the form gobundle [flags] <go verb> [args...]
-		return "", nil, err
+		return "", nil, nil, nil, err
 	}
 	if idx := slices.Index(os.Args, signThenRunVerb); idx > 0 {
 		// command line is of the form gobundle <a.out> [flags] sign-then-run [args...]
 		if len(os.Args) > 2 {
 			execBinary = os.Args[1]
 		}
-		if err := fs.Parse(os.Args[2:]); err != nil {
-			return "", nil, err
+		cmdFs, lf = createFS()
+		if err := cmdFs.Parse(os.Args[2:]); err != nil {
+			return "", nil, nil, nil, err
 		}
-		return execBinary, os.Args[idx+1:], nil
+		return execBinary, os.Args[idx+1:], cmdFs, lf, nil
 	}
-	return "", nil, nil
+	return "", nil, cmdFs, lf, nil
 }
 
 // parseGoArgs parses the command line arguments to determine the go verb and its
@@ -86,18 +93,21 @@ func parseGoArgs(args []string) (binary, verb string, verbArgs []string) {
 	return binary, verb, verbArgs
 }
 
+func createFS() (*flag.FlagSet, *localFlags) {
+	cmdFs := flag.NewFlagSet("gobundle", flag.ContinueOnError)
+	var lf localFlags
+	if err := flags.RegisterFlagsInStruct(cmdFs, "cmd", &lf, nil, nil); err != nil {
+		panic(err)
+	}
+	return cmdFs, &lf
+}
+
 func main() {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	cmdFs := flag.NewFlagSet("gobundle", flag.ExitOnError)
-	var lf localFlags
-	if err := flags.RegisterFlagsInStruct(cmdFs, "cmd", &lf, nil, nil); err != nil {
-		panic(err)
-	}
-
-	execBinary, execArgs, err := parseFlags(cmdFs)
+	execBinary, execArgs, cmdFs, lf, err := parseFlags()
 	if err != nil || lf.Help {
 		printHelpAndExit()
 	}
