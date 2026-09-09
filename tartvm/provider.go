@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"cloudeng.io/cmdutil/cmdtypes"
 	"cloudeng.io/errors"
 	"cloudeng.io/vms"
 	"cloudeng.io/vms/vmspool"
@@ -168,6 +169,36 @@ func (p *Provider) Delete(ctx context.Context, stopTimeout time.Duration) ([]str
 	return deleted, errs.Err()
 }
 
+// Pull fetches image into the local OCI cache with "tart pull", so that a
+// subsequent clone uses the newly fetched copy rather than whatever was cached
+// before. tartBinary may be empty, in which case DefaultTartBinary is used.
+//
+// Only a reference naming a registry can be pulled; a local image name has
+// nothing to pull from, and tart reports that as an error.
+func Pull(ctx context.Context, tartBinary, image string, insecure bool, concurrency int) error {
+	if tartBinary == "" {
+		tartBinary = DefaultTartBinary
+	}
+	args := []string{"pull", image}
+	if insecure {
+		args = append(args, "--insecure")
+	}
+	if concurrency > 0 {
+		args = append(args, "--concurrency", strconv.Itoa(concurrency))
+	}
+	return runTart(ctx, tartBinary, args...)
+}
+
+// SetResources updates the resource configuration of a tart VM image using "tart
+// set".
+func SetResources(ctx context.Context, tartBinary, image string, resources ResourceConfig) error {
+	if tartBinary == "" {
+		tartBinary = DefaultTartBinary
+	}
+	args := append([]string{"set", image}, resources.flags()...)
+	return runTart(ctx, tartBinary, args...)
+}
+
 func runTart(ctx context.Context, tartBinary string, args ...string) error {
 	_, err := runTartOut(ctx, tartBinary, args...)
 	return err
@@ -182,4 +213,30 @@ func runTartOut(ctx context.Context, tartBinary string, args ...string) ([]byte,
 		return nil, convertError(args, stderr.String(), err)
 	}
 	return stdout.Bytes(), nil
+}
+
+// ResourceConfig specifies the resources allocated to a tart VM, including disk
+// size, number of CPU cores, and amount of RAM.
+type ResourceConfig struct {
+	Disk   cmdtypes.ByteSize `yaml:"disk"` // size of the VM's disk in GiB
+	NumCPU int               `yaml:"cpu"`  // number of CPU cores allocated to the VM
+	Mem    cmdtypes.ByteSize `yaml:"ram"`  // amount of RAM allocated to the VM in GiB
+}
+
+func (r ResourceConfig) configured() bool {
+	return r.Disk > 0 || r.NumCPU > 0 || r.Mem > 0
+}
+
+func (r ResourceConfig) flags() []string {
+	opts := []string{}
+	if r.Disk > 0 {
+		opts = append(opts, "--disk", fmt.Sprintf("%d", r.Disk))
+	}
+	if r.NumCPU > 0 {
+		opts = append(opts, "--cpu", fmt.Sprintf("%d", r.NumCPU))
+	}
+	if r.Mem > 0 {
+		opts = append(opts, "--memory", fmt.Sprintf("%d", r.Mem/cmdtypes.MiB))
+	}
+	return opts
 }

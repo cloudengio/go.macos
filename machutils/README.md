@@ -7,7 +7,26 @@ import cloudeng.io/macos/machutils
 Package machutils provides low level utilities for interacting with the
 macOS kernel.
 
+## Constants
+### AppSandboxEntitlement
+```go
+AppSandboxEntitlement = "com.apple.security.app-sandbox"
+
+```
+AppSandboxEntitlement is the entitlement that places a process in the macOS
+App Sandbox.
+
+
+
 ## Variables
+### ErrFailedToRetrieveEntitlements
+```go
+ErrFailedToRetrieveEntitlements = errors.New("failed to retrieve code signing entitlements from the kernel")
+
+```
+ErrFailedToRetrieveEntitlements is returned when the code signing
+entitlements of the running process cannot be retrieved from the kernel.
+
 ### ErrFailedToRetrieveParentUID
 ```go
 ErrFailedToRetrieveParentUID = errors.New("failed to retrieve parent process UID from the kernel")
@@ -36,6 +55,18 @@ the executable cannot be modified or run by other users, 4 ensures that the
 process has not escalated privileges, and 5 ensures that parent identity
 cannot be spoofed via orphaning.
 
+### Func Entitlements
+```go
+func Entitlements() ([]byte, error)
+```
+Entitlements returns the code signing entitlements of the running
+executable, as the property list recorded in its signature, or nil if it was
+signed without any.
+
+Only the property list form of the entitlements is consulted. A signature
+that carries them solely in their DER form, which the kernel keeps
+separately, is reported here as having none.
+
 ### Func GetExecutableInfo
 ```go
 func GetExecutableInfo() (uint32, os.FileInfo, error)
@@ -47,6 +78,24 @@ GetExecutableInfo retrieves the owner UID and file info of the executable.
 func GetParentUID() (uint32, error)
 ```
 GetParentUID retrieves the real user ID (RUID) of the parent process.
+
+### Func IsSandboxed
+```go
+func IsSandboxed() (bool, error)
+```
+IsSandboxed reports whether the running executable is confined by the macOS
+App Sandbox, which it determines from the com.apple.security.app-sandbox
+entitlement in its code signature.
+
+That entitlement is what places a process in the App Sandbox: it is applied
+by the kernel when the process is executed, and a process carrying it with
+no container to run in is killed rather than run unconfined. Its presence
+is therefore conclusive. App extensions, Safari web extensions among them,
+are always signed with it.
+
+It says nothing about the other ways a process can be confined on macOS.
+A profile applied by sandbox_init, or by being launched under sandbox-exec,
+leaves no trace in the code signature and is not reported here.
 
 
 

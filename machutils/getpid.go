@@ -37,15 +37,28 @@ func GetParentUID() (uint32, error) {
 }
 
 // GetExecutableInfo retrieves the owner UID and file info of the executable.
+//
+// The executable is identified by ExecutablePath rather than by os.Executable,
+// so that what is examined is the binary the kernel is running rather than the
+// path it was launched through. The two differ for a process started through a
+// symbolic link, and for one in an App Sandbox the latter can name a path that
+// does not exist.
 func GetExecutableInfo() (uint32, os.FileInfo, error) {
-	execPath, err := os.Executable()
+	execPath, err := ExecutablePath()
 	if err != nil {
+		// The kernel has no path to give for an executable that has been
+		// unlinked, so name the path the process was launched through: it is
+		// all that is left to identify it by, and says nothing about where
+		// the binary is now.
+		if launched, lerr := os.Executable(); lerr == nil {
+			return 0, nil, fmt.Errorf("%w (launched as %v)", err, launched)
+		}
 		return 0, nil, err
 	}
 
 	fileInfo, err := os.Stat(execPath)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, fmt.Errorf("failed to stat the executable %v: %w", execPath, err)
 	}
 
 	systat, ok := fileInfo.Sys().(*syscall.Stat_t)
