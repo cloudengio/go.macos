@@ -62,7 +62,7 @@ budget of ~102 seconds.
 
 ### Func Pull
 ```go
-func Pull(ctx context.Context, tartBinary, image string) error
+func Pull(ctx context.Context, tartBinary, image string, insecure bool, concurrency int) error
 ```
 Pull fetches image into the local OCI cache with "tart pull", so that a
 subsequent clone uses the newly fetched copy rather than whatever was cached
@@ -70,6 +70,13 @@ before. tartBinary may be empty, in which case DefaultTartBinary is used.
 
 Only a reference naming a registry can be pulled; a local image name has
 nothing to pull from, and tart reports that as an error.
+
+### Func SetResources
+```go
+func SetResources(ctx context.Context, tartBinary, image string, resources ResourceConfig) error
+```
+SetResources updates the resource configuration of a tart VM image using
+"tart set".
 
 
 
@@ -307,6 +314,12 @@ on demand.
 
 
 ```go
+func WithResources(resources ResourceConfig) Option
+```
+WithResources sets the resource configuration for the tart VM.
+
+
+```go
 func WithRunBackoff(cfg ratecontrol.ExponentialBackoffConfig) Option
 ```
 WithRunBackoff sets the backoff bounding how long to wait for the VM to
@@ -334,6 +347,8 @@ when waiting for state transitions, network availability, etc.
 ```go
 func WithTartBinary(tartBinary string) Option
 ```
+WithTartBinary sets the path to the tart binary to use for running tart
+commands.
 
 
 
@@ -420,6 +435,18 @@ WithProviderTartBinary sets the tart binary path to use for all Provider
 operations.
 
 
+
+
+### Type ResourceConfig
+```go
+type ResourceConfig struct {
+	Disk   cmdtypes.ByteSize `yaml:"disk"` // size of the VM's disk in GiB
+	NumCPU int               `yaml:"cpu"`  // number of CPU cores allocated to the VM
+	Mem    cmdtypes.ByteSize `yaml:"ram"`  // amount of RAM allocated to the VM in GiB
+}
+```
+ResourceConfig specifies the resources allocated to a tart VM, including
+disk size, number of CPU cores, and amount of RAM.
 
 
 

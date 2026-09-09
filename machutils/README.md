@@ -27,6 +27,14 @@ ErrFailedToRetrieveEntitlements = errors.New("failed to retrieve code signing en
 ErrFailedToRetrieveEntitlements is returned when the code signing
 entitlements of the running process cannot be retrieved from the kernel.
 
+### ErrFailedToRetrieveExecutablePath
+```go
+ErrFailedToRetrieveExecutablePath = errors.New("failed to retrieve the executable path from the kernel")
+
+```
+ErrFailedToRetrieveExecutablePath is returned when the path of the running
+executable cannot be retrieved from the kernel.
+
 ### ErrFailedToRetrieveParentUID
 ```go
 ErrFailedToRetrieveParentUID = errors.New("failed to retrieve parent process UID from the kernel")
@@ -67,11 +75,34 @@ Only the property list form of the entitlements is consulted. A signature
 that carries them solely in their DER form, which the kernel keeps
 separately, is reported here as having none.
 
+### Func ExecutablePath
+```go
+func ExecutablePath() (string, error)
+```
+ExecutablePath returns the path of the binary that this process is running,
+as the kernel records it for the executing file.
+
+It exists because os.Executable does not answer that question on macOS.
+What os.Executable reports is the path the process was launched with, made
+absolute against the working directory when it is relative. That names the
+symbolic link when a process is started through one, and for a process in
+an App Sandbox it can name a path that does not exist at all, the recorded
+path having been joined to the container's redirected home directory rather
+than to the directory the binary occupies. Asking the kernel avoids both:
+the path returned is that of the file being executed, with symbolic links
+already resolved.
+
 ### Func GetExecutableInfo
 ```go
 func GetExecutableInfo() (uint32, os.FileInfo, error)
 ```
 GetExecutableInfo retrieves the owner UID and file info of the executable.
+
+The executable is identified by ExecutablePath rather than by os.Executable,
+so that what is examined is the binary the kernel is running rather than the
+path it was launched through. The two differ for a process started through a
+symbolic link, and for one in an App Sandbox the latter can name a path that
+does not exist.
 
 ### Func GetParentUID
 ```go
