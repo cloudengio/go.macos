@@ -18,14 +18,17 @@ import (
 
 func main() {
 	var (
-		checkUID   = flag.Int64("check-uid", -1, "expected UID to check against")
-		execUID    = flag.Bool("exec-uid", false, "print the UID and permissions of the running executable")
-		deleteSelf = flag.Bool("delete-self", false, "remove the executable before reading its UID, for error testing")
-		ensureSafe = flag.Bool("ensure-safe", false, "report whether the parent process is safe")
-		orphan     = flag.String("orphan", "", "spawn a copy that reports its parent UID to the named file, then exit without waiting for it")
-		report     = flag.String("report-parent-uid", "", "wait to be reparented, then write the parent PID and UID to the named file")
-		orphanSafe = flag.String("orphan-safe", "", "spawn a copy that tests EnsureParentProcessSafe after being orphaned, then exit without waiting for it")
-		reportSafe = flag.String("report-safe", "", "wait to be reparented, then write EnsureParentProcessSafe result to named file")
+		checkUID     = flag.Int64("check-uid", -1, "expected UID to check against")
+		execUID      = flag.Bool("exec-uid", false, "print the UID and permissions of the running executable")
+		deleteSelf   = flag.Bool("delete-self", false, "remove the executable before reading its UID, for error testing")
+		ensureSafe   = flag.Bool("ensure-safe", false, "report whether the parent process is safe")
+		orphan       = flag.String("orphan", "", "spawn a copy that reports its parent UID to the named file, then exit without waiting for it")
+		report       = flag.String("report-parent-uid", "", "wait to be reparented, then write the parent PID and UID to the named file")
+		orphanSafe   = flag.String("orphan-safe", "", "spawn a copy that tests EnsureParentProcessSafe after being orphaned, then exit without waiting for it")
+		reportSafe   = flag.String("report-safe", "", "wait to be reparented, then write EnsureParentProcessSafe result to named file")
+		sandboxed    = flag.Bool("sandboxed", false, "report whether this process is confined by the App Sandbox")
+		entitlements = flag.Bool("entitlements", false, "print the code signing entitlements of this process")
+		execPaths    = flag.Bool("exec-paths", false, "print the path this process was launched through and the path the kernel records for it")
 	)
 	flag.Parse()
 
@@ -52,6 +55,15 @@ func main() {
 	case *reportSafe != "":
 		reportSafeAfterReparenting(*reportSafe)
 		return
+	case *sandboxed:
+		reportSandboxed()
+		return
+	case *entitlements:
+		reportEntitlements()
+		return
+	case *execPaths:
+		reportExecutablePaths()
+		return
 	}
 
 	uid, err := machutils.GetParentUID()
@@ -64,6 +76,44 @@ func main() {
 		os.Exit(2)
 	}
 	fmt.Fprintf(os.Stdout, "%d\n", uid)
+}
+
+// reportExecutablePaths prints the path the process was launched through and
+// the path the kernel records for the binary it is running, which differ when
+// the process was started through a symbolic link.
+func reportExecutablePaths() {
+	launched, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(7)
+	}
+	actual, err := machutils.ExecutablePath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(7)
+	}
+	fmt.Fprintf(os.Stdout, "%s\n%s\n", launched, actual)
+}
+
+// reportSandboxed prints whether this process is confined by the App Sandbox.
+func reportSandboxed() {
+	confined, err := machutils.IsSandboxed()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(5)
+	}
+	fmt.Fprintf(os.Stdout, "%v\n", confined)
+}
+
+// reportEntitlements prints the code signing entitlements of this process,
+// which is nothing at all when it was signed without any.
+func reportEntitlements() {
+	entitlements, err := machutils.Entitlements()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(6)
+	}
+	fmt.Fprintf(os.Stdout, "%s", entitlements)
 }
 
 // reportExecutableOwner prints the UID and permissions of the running

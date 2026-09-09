@@ -405,3 +405,130 @@ func TestEnsureParentProcessSafeOrphaned(t *testing.T) {
 		t.Errorf("got %q, want it to report that the process has been orphaned", result)
 	}
 }
+
+// TestSubprocessGetExecutableInfoViaSymlink verifies that the permissions and
+// owner reported are those of the binary rather than of a symbolic link
+// leading to it. os.Executable reports the path the process was executed
+// through, which for a link is the link itself, and a link's own mode is
+// 0755: were it not resolved, every such process would look group and world
+// executable and be rejected as unsafe.
+func TestSubprocessGetExecutableInfoViaSymlink(t *testing.T) {
+	clone := cloneTestBinary(t, 0700)
+	link := filepath.Join(filepath.Dir(clone), "machutils-test-link")
+	if err := os.Symlink(clone, link); err != nil {
+		t.Fatal(err)
+	}
+	// The link is not the binary: its own mode differs from the mode that
+	// must be reported.
+	li, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if li.Mode().Perm() == 0700 {
+		t.Fatalf("the symlink has the same permissions as its target, so this proves nothing")
+	}
+
+	stdout, stderr, err := runBinary(t, link, "-exec-uid")
+	if err != nil {
+		t.Fatalf("subprocess failed: %v (stderr: %s)", err, stderr)
+	}
+	want := fmt.Sprintf("%d %o\n", os.Getuid(), 0700)
+	if got := stdout; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+
+	// Running through the link must also be judged safe, which it is only
+	// because the link's own permissions are not the ones examined.
+	stdout, stderr, err = runBinary(t, link, "-ensure-safe")
+	if err != nil {
+		t.Fatalf("running via a symlink was judged unsafe: %v (stderr: %s)", err, stderr)
+	}
+	if got, want := strings.TrimSpace(stdout), "safe"; got != want {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestSubprocessGetExecutableInfoUnresolvable verifies that an executable
+// whose path cannot be resolved is reported with the path named, so that the
+// failure says which binary could not be examined.
+func TestSubprocessGetExecutableInfoUnresolvable(t *testing.T) {
+	clone := cloneTestBinary(t, 0700)
+	stdout, stderr, err := runBinary(t, clone, "-exec-uid", "-delete-self")
+	if err == nil {
+		t.Fatalf("expected the subprocess to fail, it printed %q", stdout)
+	}
+	if got, want := stderr, clone; !strings.Contains(got, want) {
+		t.Errorf("the error %q does not name the executable %q", got, want)
+	}
+}
+
+// TestSubprocessExecutablePath verifies that the kernel is the source of the
+// executable's path. Launching through a symbolic link is the case that can be
+// reproduced here: os.Executable reports the link, because that is the path
+// the process was launched with, whilst the kernel reports the binary. The
+// same distinction is what makes the path usable from an App Sandbox, where
+// os.Executable can name a path that does not exist.
+func TestSubprocessExecutablePath(t *testing.T) {
+	clone := cloneTestBinary(t, 0700)
+	link := filepath.Join(filepath.Dir(clone), "machutils-path-link")
+	if err := os.Symlink(clone, link); err != nil {
+		t.Fatal(err)
+	}
+	// The kernel reports the canonical path, which on macOS differs from the
+	// one under test even before the symlink to the binary is considered:
+	// temporary directories live under /var, itself a link to /private/var.
+	resolved, err := filepath.EvalSymlinks(clone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved == clone {
+		t.Logf("the temporary directory is already canonical: %v", clone)
+	}
+
+	for _, tc := range []struct {
+		name            string
+		run             string
+		wantLaunchedAs  string
+		wantExecutingAs string
+	}{
+		{"launched directly", clone, clone, resolved},
+		{"launched through a symlink", link, link, resolved},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, stderr, err := runBinary(t, tc.run, "-exec-paths")
+			if err != nil {
+				t.Fatalf("subprocess failed: %v (stderr: %s)", err, stderr)
+			}
+			lines := strings.Split(strings.TrimSpace(stdout), "\n")
+			if len(lines) != 2 {
+				t.Fatalf("expected two paths, got %q", stdout)
+			}
+			if got, want := lines[0], tc.wantLaunchedAs; got != want {
+				t.Errorf("os.Executable: got %v, want %v", got, want)
+			}
+			if got, want := lines[1], tc.wantExecutingAs; got != want {
+				t.Errorf("ExecutablePath: got %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// TestExecutablePath verifies the path reported for the test binary itself,
+// which is launched directly and so is reported the same way by both.
+func TestExecutablePath(t *testing.T) {
+	got, err := machutils.ExecutablePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// os.Executable is not resolved, so compare against the resolved form.
+	if want, err = filepath.EvalSymlinks(want); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
