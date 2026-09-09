@@ -97,7 +97,6 @@ type options struct {
 	logger           *slog.Logger
 	ipAtStart        bool
 	tartBinary       string
-	resources        ResourceConfig
 }
 
 // WithStateBackoff sets the backoff to use when polling the state of the VM
@@ -157,18 +156,9 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
-// WithTartBinary sets the path to the tart binary to use for running tart
-// commands.
 func WithTartBinary(tartBinary string) Option {
 	return func(o *options) {
 		o.tartBinary = tartBinary
-	}
-}
-
-// WithResources sets the resource configuration for the tart VM.
-func WithResources(resources ResourceConfig) Option {
-	return func(o *options) {
-		o.resources = resources
 	}
 }
 
@@ -365,18 +355,11 @@ func convertError(args []string, stderr string, err error) error {
 func (inst *Instance) Clone(ctx context.Context) error {
 	inst.opMutex.Lock()
 	defer inst.opMutex.Unlock()
-	err := inst.runSyncExclusive(ctx,
+	return inst.runSyncExclusive(ctx,
 		vms.ActionClone,  // action
 		vms.StateCloning, // intermediate state
 		vms.StateStopped, // target state
 		"clone", inst.source, inst.name)
-	if err != nil {
-		return err
-	}
-	if !inst.opts.resources.configured() {
-		return nil
-	}
-	return SetResources(ctx, inst.opts.tartBinary, inst.name, inst.opts.resources)
 }
 
 // Delete runs "tart delete <name>" and transitions to StateDeleted.
