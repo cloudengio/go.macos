@@ -54,7 +54,11 @@ func (s Signer) entitlementsFileFor(path string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	tmpFile, err := os.CreateTemp("", filepath.Base(path)+"entitlements.plist-")
+	prefix := "entitlements.plist-"
+	if base := filepath.Base(path); base != "" && base != "." {
+		prefix = base + "-entitlements.plist-"
+	}
+	tmpFile, err := os.CreateTemp("", prefix)
 	if err != nil {
 		return "", false, err
 	}
@@ -82,19 +86,18 @@ func (s Signer) SignPath(bundle, path string) Step {
 	} else {
 		args = append(args, s.arguments...)
 	}
-	entitlementsFile, ok, err := s.entitlementsFileFor(path)
-	if err != nil {
-		return ErrorStep(fmt.Errorf("failed to create entitlements file for %q: %w", path, err), "codesign")
-	}
-	if ok {
-		args = append(args, "--entitlements", entitlementsFile)
-	}
-	args = append(args, filepath.Join(bundle, path))
 	return StepFunc(func(ctx context.Context, cmdRunner *CommandRunner) (StepResult, error) {
-		if entitlementsFile != "" {
-			defer os.Remove(entitlementsFile) //nolint:errcheck
+		stepArgs := append([]string{}, args...)
+		entitlementsFile, ok, err := s.entitlementsFileFor(path)
+		if err != nil {
+			return ErrorStep(fmt.Errorf("failed to create entitlements file for %q: %w", path, err), "codesign").Run(ctx, cmdRunner)
 		}
-		result, err := cmdRunner.Run(ctx, "codesign", args...)
+		if ok {
+			defer os.Remove(entitlementsFile) //nolint:errcheck
+			stepArgs = append(stepArgs, "--entitlements", entitlementsFile)
+		}
+		stepArgs = append(stepArgs, filepath.Join(bundle, path))
+		result, err := cmdRunner.Run(ctx, "codesign", stepArgs...)
 		if err != nil {
 			if entitlementsFile != "" {
 				ent, nerr := os.ReadFile(entitlementsFile)

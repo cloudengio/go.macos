@@ -58,6 +58,21 @@ func generateExtensionID(publicKey []byte) (string, error) {
 	return string(extensionID), nil
 }
 
+func parseRSAPrivateKey(der []byte) (*rsa.PrivateKey, error) {
+	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+		return key, nil
+	}
+	keyAny, err := x509.ParsePKCS8PrivateKey(der)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse RSA private key (tried PKCS#1 and PKCS#8): %w", err)
+	}
+	rsaKey, ok := keyAny.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("PKCS#8 key is not an RSA private key")
+	}
+	return rsaKey, nil
+}
+
 // CreateChromeExtensionID generates a stable Chrome Extension ID suitable for development use.
 // Note that this ID is derived from a newly generated RSA key pair each time
 // the function is called, so it will be different on each invocation.
@@ -71,15 +86,14 @@ func (b Browser) CreateChromeExtensionID() ([]byte, string, error) {
 	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
 	// MarshalPKCS1PrivateKey returns the DER encoding of the private key.
 	// To obtain PEM encoding, wrap the DER bytes using pem.Encode or pem.EncodeToMemory.
-	// Example:
 	pemBlock := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: privateKeyBytes}
 	pemBytes := pem.EncodeToMemory(pemBlock)
 
-	// 2. Extract the public key and encode it into the DER PKCS#1 format
-	// required for the SHA-256 hash calculation by Chrome.
-	publicKeyBytes := x509.MarshalPKCS1PublicKey(&privateKey.PublicKey)
-	if publicKeyBytes == nil {
-		return nil, "", fmt.Errorf("failed to marshal public key to PKCS#1 format")
+	// 2. Extract the public key and encode it into the DER SubjectPublicKeyInfo (SPKI)
+	// format required for the SHA-256 hash calculation by Chrome.
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to marshal public key to PKIX format: %w", err)
 	}
 
 	// 3. Generate the final extension ID.
@@ -98,19 +112,22 @@ func (b Browser) ReadChromeExtensionID(keyFile string) ([]byte, string, error) {
 
 	// Decode the PEM block containing the private key.
 	block, _ := pem.Decode(privateKeyData)
-	if block == nil || block.Type != "RSA PRIVATE KEY" {
+	if block == nil || (block.Type != "RSA PRIVATE KEY" && block.Type != "PRIVATE KEY") {
 		return nil, "", fmt.Errorf("failed to decode PEM block containing RSA private key")
 	}
 
 	// Parse the RSA private key.
-	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	privateKey, err := parseRSAPrivateKey(block.Bytes)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse RSA private key: %v", err)
+		return nil, "", err
 	}
 
-	// Extract the public key and encode it into the DER PKCS#1 format
-	// required for the SHA-256 hash calculation by Chrome.
-	publicKeyBytes := x509.MarshalPKCS1PublicKey(&privateKey.PublicKey)
+	// Extract the public key and encode it into the DER SubjectPublicKeyInfo (SPKI)
+	// format required for the SHA-256 hash calculation by Chrome.
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to marshal public key to PKIX format: %w", err)
+	}
 	id, err := generateExtensionID(publicKeyBytes)
 	return publicKeyBytes, id, err
 }

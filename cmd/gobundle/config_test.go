@@ -10,8 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"cloudeng.io/cmdutil/cmdyaml"
 	"cloudeng.io/macos/buildtools"
-	"gopkg.in/yaml.v3"
+	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
 func newConfigFile(t *testing.T, dir, name, data string) string {
@@ -21,6 +22,20 @@ func newConfigFile(t *testing.T, dir, name, data string) string {
 		t.Fatalf("failed to write file: %v", err)
 	}
 	return path
+}
+
+func loadConfig(t *testing.T, sharedFile, appFile, binary string) gobundleconfig.T {
+	t.Helper()
+	files := gobundleconfig.LocateConfigFiles(sharedFile, appFile)
+	var cfg gobundleconfig.T
+	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(os.Getenv))
+	if err := parser.ParseFiles(t.Context(), &cfg, files...); err != nil {
+		t.Fatalf("failed to parse files %v: %v", files, err)
+	}
+	if len(binary) > 0 {
+		cfg = cfg.WithDefaultsForBinary(binary)
+	}
+	return cfg
 }
 
 func TestLoadAndMergeConfigs(t *testing.T) {
@@ -49,35 +64,29 @@ info.plist:
   CFBundleDisplayName: My App
 `
 
-	mergedConfig := `
-identity: shared-identity
-entitlements:
-  com.apple.security.app-sandbox: true
-info.plist:
-  CFBundleIdentifier: com.shared.bundle
-  CFBundleDisplayName: My App
-`
-
 	newConfigFile(t, tmpDir, "gobundle-shared.yaml", sharedConfig)
 	newConfigFile(t, tmpDir, "gobundle-app.yaml", appConfig)
 
-	// load from files in current directory.
-	mergedYAML, err := readAndMergeConfigs()
-	if err != nil {
-		t.Fatalf("loadAndMergeConfigs failed: %v", err)
-	}
+	cfg := loadConfig(t, "", "", "binary")
 
-	gotYAML, err := yaml.Marshal(parseConfig(t, mergedYAML))
-	if err != nil {
-		t.Fatalf("failed to marshal got config: %v", err)
+	if got, want := cfg.Identity, "shared-identity"; got != want {
+		t.Errorf("Identity = %q, want %q", got, want)
 	}
-	wantYAML, err := yaml.Marshal(parseConfig(t, []byte(mergedConfig)))
-	if err != nil {
-		t.Fatalf("failed to marshal want config: %v", err)
+	if cfg.Entitlements == nil {
+		t.Fatalf("expected Entitlements to be non-nil")
 	}
-
-	if got, want := string(gotYAML), string(wantYAML); got != want {
-		t.Fatalf("merged config does not match expected:\nGot:\n%v\nExpected:\n%v", got, want)
+	entData, err := cfg.Entitlements.MarshalIndent("")
+	if err != nil || !strings.Contains(string(entData), "com.apple.security.app-sandbox") {
+		t.Errorf("expected AppSandbox in Entitlements, got: %s", string(entData))
+	}
+	if got, want := cfg.Info.CFBundleIdentifier, "com.shared.bundle"; got != want {
+		t.Errorf("CFBundleIdentifier = %q, want %q", got, want)
+	}
+	if got, want := cfg.Info.CFBundleDisplayName, "My App"; got != want {
+		t.Errorf("CFBundleDisplayName = %q, want %q", got, want)
+	}
+	if got, want := cfg.Info.CFBundleExecutable, "binary"; got != want {
+		t.Errorf("CFBundleExecutable = %q, want %q", got, want)
 	}
 }
 
@@ -97,61 +106,32 @@ func TestExpandEnv(t *testing.T) {
 	}()
 
 	t.Setenv("TEST_IDENTITY", "test-identity")
-	t.Setenv("TEST_ENTITLEMENT", "true")
 	t.Setenv("TEST_BUNDLE_ID", "com.test.bundle")
 
 	sharedConfig := `
 identity: ${TEST_IDENTITY}
 entitlements:
-  "com.apple.security.app-sandbox": "${TEST_ENTITLEMENT}"
+  com.apple.security.app-sandbox: true
 `
 	appConfig := `
 info.plist:
   CFBundleIdentifier: ${TEST_BUNDLE_ID}
   CFBundleDisplayName: My App
 `
-
-	mergedConfig := `
-identity: test-identity
-entitlements:
-  com.apple.security.app-sandbox: true
-info.plist:
-  CFBundleIdentifier: com.test.bundle
-  CFBundleDisplayName: My App
-`
 	newConfigFile(t, tmpDir, "gobundle-shared.yaml", sharedConfig)
 	newConfigFile(t, tmpDir, "gobundle-app.yaml", appConfig)
 
-	// load from files in current directory.
-	mergedYAML, err := readAndMergeConfigs()
-	if err != nil {
-		t.Fatalf("loadAndMergeConfigs failed: %v", err)
-	}
+	cfg := loadConfig(t, "", "", "binary")
 
-	gotYAML, err := yaml.Marshal(parseConfig(t, mergedYAML))
-	if err != nil {
-		t.Fatalf("failed to marshal got config: %v", err)
+	if got, want := cfg.Identity, "test-identity"; got != want {
+		t.Errorf("Identity = %q, want %q", got, want)
 	}
-	wantYAML, err := yaml.Marshal(parseConfig(t, []byte(mergedConfig)))
-	if err != nil {
-		t.Fatalf("failed to marshal want config: %v", err)
-	}
-
-	if got, want := string(gotYAML), string(wantYAML); got != want {
-		t.Fatalf("merged config does not match expected:\nGot:\n%v\nExpected:\n%v", got, want)
+	if got, want := cfg.Info.CFBundleIdentifier, "com.test.bundle"; got != want {
+		t.Errorf("CFBundleIdentifier = %q, want %q", got, want)
 	}
 }
 
-func parseConfig(t *testing.T, merged []byte) config {
-	t.Helper()
-	cfg, err := configFromMerged(merged, "binary")
-	if err != nil {
-		t.Fatalf("failed to parse config: %v", err)
-	}
-	return cfg
-}
-
-func TestLoadAndMergeConfigsNotarize(t *testing.T) {
+func TestLoadAndMergeConfigsNotary(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +152,6 @@ notary:
   keychain_profile: my-notary-profile
 `
 	appConfig := `
-notarize: true
 info.plist:
   CFBundleIdentifier: com.shared.bundle
   CFBundleDisplayName: My App
@@ -181,22 +160,14 @@ info.plist:
 	newConfigFile(t, tmpDir, "gobundle-shared.yaml", sharedConfig)
 	newConfigFile(t, tmpDir, "gobundle-app.yaml", appConfig)
 
-	mergedYAML, err := readAndMergeConfigs()
-	if err != nil {
-		t.Fatalf("readAndMergeConfigs failed: %v", err)
-	}
-
-	cfg := parseConfig(t, mergedYAML)
-	if !cfg.Notarize {
-		t.Errorf("expected Notarize to be true")
-	}
+	cfg := loadConfig(t, "", "", "binary")
 	if got, want := cfg.Identity, "Developer ID Application: Example Inc (TEAM123)"; got != want {
 		t.Errorf("Identity = %q, want %q", got, want)
 	}
-	if got, want := cfg.Notary.KeychainProfile, "my-notary-profile"; got != want {
+	if got, want := cfg.KeychainProfile, "my-notary-profile"; got != want {
 		t.Errorf("Notary.KeychainProfile = %q, want %q", got, want)
 	}
-	if !cfg.Notary.Configured() {
+	if !cfg.NotaryConfig.Configured() {
 		t.Errorf("expected Notary to be Configured()")
 	}
 }
@@ -217,31 +188,57 @@ func TestExpandEnvNotary(t *testing.T) {
 	}()
 
 	t.Setenv("NOTARY_PROFILE", "env-notary-profile")
-	t.Setenv("NOTARY_ENABLE", "true")
 
 	sharedConfig := `
 notary:
   keychain_profile: ${NOTARY_PROFILE}
 `
 	appConfig := `
-notarize: ${NOTARY_ENABLE}
 info.plist:
   CFBundleIdentifier: com.env.bundle
 `
 	newConfigFile(t, tmpDir, "gobundle-shared.yaml", sharedConfig)
 	newConfigFile(t, tmpDir, "gobundle-app.yaml", appConfig)
 
-	mergedYAML, err := readAndMergeConfigs()
-	if err != nil {
-		t.Fatalf("readAndMergeConfigs failed: %v", err)
-	}
-
-	cfg := parseConfig(t, mergedYAML)
-	if !cfg.Notarize {
-		t.Errorf("expected Notarize to be true after env expansion")
-	}
-	if got, want := cfg.Notary.KeychainProfile, "env-notary-profile"; got != want {
+	cfg := loadConfig(t, "", "", "binary")
+	if got, want := cfg.KeychainProfile, "env-notary-profile"; got != want {
 		t.Errorf("Notary.KeychainProfile = %q, want %q", got, want)
+	}
+}
+
+func TestPermissionsConfig(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	sharedConfig := `
+permissions:
+  executable: 0755
+  macos_dir: 0750
+`
+	appConfig := `
+info.plist:
+  CFBundleIdentifier: com.perm.bundle
+`
+	newConfigFile(t, tmpDir, "gobundle-shared.yaml", sharedConfig)
+	newConfigFile(t, tmpDir, "gobundle-app.yaml", appConfig)
+
+	cfg := loadConfig(t, "", "", "binary")
+	if got, want := cfg.Permissions.ExecutableMode(), os.FileMode(0755); got != want {
+		t.Errorf("ExecutableMode() = %04o, want %04o", got, want)
+	}
+	if got, want := cfg.Permissions.MacOSDirMode(), os.FileMode(0750); got != want {
+		t.Errorf("MacOSDirMode() = %04o, want %04o", got, want)
 	}
 }
 
@@ -249,9 +246,8 @@ func TestCreateAndSignNotarizeValidation(t *testing.T) {
 	ctx := t.Context()
 
 	// 1. Notarize requested but no identity
-	b := newBundle(config{
-		Notarize: true,
-		Notary: buildtools.NotaryConfig{
+	b := newBundle(gobundleconfig.T{
+		NotaryConfig: buildtools.NotaryConfig{
 			KeychainProfile: "my-profile",
 		},
 	})
@@ -261,10 +257,11 @@ func TestCreateAndSignNotarizeValidation(t *testing.T) {
 	}
 
 	// 2. Notarize requested with Apple Development identity
-	b = newBundle(config{
-		Identity: "Apple Development: Developer (TEAM123)",
-		Notarize: true,
-		Notary: buildtools.NotaryConfig{
+	b = newBundle(gobundleconfig.T{
+		SigningConfig: buildtools.SigningConfig{
+			Identity: "Apple Development: Developer (TEAM123)",
+		},
+		NotaryConfig: buildtools.NotaryConfig{
 			KeychainProfile: "my-profile",
 		},
 	})
@@ -274,9 +271,10 @@ func TestCreateAndSignNotarizeValidation(t *testing.T) {
 	}
 
 	// 3. Notarize requested with no notary credentials
-	b = newBundle(config{
-		Identity: "Developer ID Application: Developer (TEAM123)",
-		Notarize: true,
+	b = newBundle(gobundleconfig.T{
+		SigningConfig: buildtools.SigningConfig{
+			Identity: "Developer ID Application: Developer (TEAM123)",
+		},
 	})
 	err = b.createAndSign(ctx, "testbin", true)
 	if err == nil || !strings.Contains(err.Error(), "no notarization credentials are configured") {

@@ -4,7 +4,6 @@ profile: "${CLOUDENG_KEYCHAIN_PROFILE}"
 # notarytool stored profile; create it once with `xcrun notarytool
 # store-credentials` (App Store Connect API key or an app-specific password),
 # then reference it by name here.
-notarize: true
 notary:
   keychain_profile: "${CLOUDENG_KEYCHAIN_NOTARY}"
 entitlements:
@@ -16,6 +15,8 @@ entitlements:
 info.plist:
   CFBundleIdentifier: "${CLOUDENG_DEVID}.io.cloudeng.${CLOUDENG_KEYCHAIN_IDENTIFIER}"
   CFBundleIconFile: AppIcon.icns
+  LSMinimumSystemVersion: "15.0"
 icon: keychain_plugin_icon.png
-executable_permissions: 0500
-macos_dir_permissions: 0500
+permissions:
+  executable: u=rx
+  macos_dir: u=rwx

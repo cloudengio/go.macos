@@ -189,3 +189,43 @@ func TestAppBundleStapleDryRun(t *testing.T) {
 		t.Errorf("staple args %v do not contain expected stapler command", args)
 	}
 }
+
+func TestNotaryValidateSigningConfig(t *testing.T) {
+	configuredNotary := buildtools.NotaryConfig{KeychainProfile: "profile"}
+	unconfiguredNotary := buildtools.NotaryConfig{}
+
+	// 1. Unconfigured notary is always valid (no notarization requested)
+	if err := unconfiguredNotary.ValidateSigningConfig(buildtools.SigningConfig{}); err != nil {
+		t.Errorf("unconfigured notary returned error: %v", err)
+	}
+
+	// 2. Signing not configured
+	if err := configuredNotary.ValidateSigningConfig(buildtools.SigningConfig{}); err == nil {
+		t.Error("expected error when signing is not configured")
+	}
+
+	// 3. Empty identity
+	if err := configuredNotary.ValidateSigningConfig(buildtools.SigningConfig{CodesignArguments: []string{"--force"}}); err == nil {
+		t.Error("expected error when identity is empty")
+	}
+
+	// 4. Ad-hoc identity "-"
+	if err := configuredNotary.ValidateSigningConfig(buildtools.SigningConfig{Identity: "-"}); err == nil {
+		t.Error("expected error for ad-hoc identity '-'")
+	}
+
+	// 5. Apple Development identity
+	if err := configuredNotary.ValidateSigningConfig(buildtools.SigningConfig{Identity: "Apple Development: Dev (123)"}); err == nil {
+		t.Error("expected error for Apple Development identity")
+	}
+
+	// 6. Mac Developer identity
+	if err := configuredNotary.ValidateSigningConfig(buildtools.SigningConfig{Identity: "Mac Developer: Dev (123)"}); err == nil {
+		t.Error("expected error for Mac Developer identity")
+	}
+
+	// 7. Developer ID Application identity (valid)
+	if err := configuredNotary.ValidateSigningConfig(buildtools.SigningConfig{Identity: "Developer ID Application: Company (123)"}); err != nil {
+		t.Errorf("expected Developer ID identity to succeed, got: %v", err)
+	}
+}

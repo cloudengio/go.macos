@@ -9,7 +9,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
+
+	"cloudeng.io/macos/buildtools"
+	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
 func runCommand(ctx context.Context, binary string, args []string) error {
@@ -19,32 +23,32 @@ func runCommand(ctx context.Context, binary string, args []string) error {
 	return cmd.Run()
 }
 
-func handleGoRun(ctx context.Context, args []string) {
+func handleGoRun(ctx context.Context, cfg gobundleconfig.T, notarize bool, args []string) {
 	if slices.Contains(args, "-exec") {
-		exit(1, "cannot use -exec with gosign\n")
+		exit(1, "cannot use -exec with gorun\n")
 	}
 	if len(args) == 0 {
 		rungoExit(ctx, "run")
 	}
-	extendedArgs := []string{"run",
-		"-exec", os.Args[0] + " __runsign__"}
-	extendedArgs = append(extendedArgs, args...)
-	rungoExit(ctx, extendedArgs...)
+	extendedArgs := []string{"run", "-exec", os.Args[0],
+		args[0], fmt.Sprintf("--notarize=%v", notarize), signThenRunVerb}
+	extendedArgs = append(extendedArgs, args[1:]...)
+	env := buildtools.GoBuildEnvForMacOSVersion(cfg.Info.LSMinimumSystemVersion)
+	runAndExit(func() error {
+		return rungo(ctx, extendedArgs, env...)
+	})
 }
 
-func handleGoRunExec(ctx context.Context, merged []byte, binary string) error {
+func handleGoRunExec(ctx context.Context, cfg gobundleconfig.T, notarize bool, binary string, args []string) error {
 	tmpDir, err := os.MkdirTemp("", "gobundle-run")
 	if err != nil {
 		return fmt.Errorf("error creating temp dir: %v", err)
 	}
-	cfg, err := configForGoBuild(binary, tmpDir, merged)
-	if err != nil {
-		return fmt.Errorf("error processing config for go run: %v", err)
-	}
 	defer os.RemoveAll(tmpDir)
+	cfg.Path = filepath.Join(tmpDir, cfg.Info.CFBundleExecutable+".app")
 	b := newBundle(cfg)
-	if err := b.createAndSign(ctx, binary, false); err != nil {
+	if err := b.createAndSign(ctx, binary, notarize); err != nil {
 		return fmt.Errorf("error creating and signing bundle: %v", err)
 	}
-	return runCommand(ctx, b.ap.ExecutablePath(), os.Args[3:])
+	return runCommand(ctx, b.ap.ExecutablePath(), args)
 }

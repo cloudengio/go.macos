@@ -393,3 +393,113 @@ func TestAddHelperExecutable(t *testing.T) {
 		t.Error("expected an error for an unspecified executable, got nil")
 	}
 }
+
+func TestNativeMessagingScopeString(t *testing.T) {
+	for _, tc := range []struct {
+		s    buildtools.NativeMessagingScope
+		want string
+	}{
+		{buildtools.UserScope, "user"},
+		{buildtools.SystemScope, "system"},
+		{buildtools.NativeMessagingScope(42), "unknown"},
+	} {
+		if got := tc.s.String(); got != tc.want {
+			t.Errorf("Scope(%d).String() = %q, want %q", int(tc.s), got, tc.want)
+		}
+	}
+}
+
+func TestNativeMessagingHostsDirAll(t *testing.T) {
+	home := "/Users/testuser"
+
+	// Edge
+	edgeUser, err := buildtools.NativeMessagingHostsDir(buildtools.Edge, buildtools.UserScope, home)
+	if err != nil || !strings.Contains(edgeUser, "Microsoft Edge") {
+		t.Errorf("Edge user dir: %v, err: %v", edgeUser, err)
+	}
+	edgeSys, err := buildtools.NativeMessagingHostsDir(buildtools.Edge, buildtools.SystemScope, "")
+	if err != nil || !strings.Contains(edgeSys, "Microsoft/Edge") {
+		t.Errorf("Edge system dir: %v, err: %v", edgeSys, err)
+	}
+
+	// Chrome system
+	chromeSys, err := buildtools.NativeMessagingHostsDir(buildtools.Chrome, buildtools.SystemScope, "")
+	if err != nil || !strings.Contains(chromeSys, "Google/Chrome") {
+		t.Errorf("Chrome system dir: %v, err: %v", chromeSys, err)
+	}
+
+	// Firefox system
+	ffSys, err := buildtools.NativeMessagingHostsDir(buildtools.Firefox, buildtools.SystemScope, "")
+	if err != nil || !strings.Contains(ffSys, "Mozilla") {
+		t.Errorf("Firefox system dir: %v, err: %v", ffSys, err)
+	}
+
+	// Error cases
+	if _, err := buildtools.NativeMessagingHostsDir(buildtools.Chrome, buildtools.UserScope, ""); err == nil {
+		t.Error("expected error for empty home on UserScope")
+	}
+	if _, err := buildtools.NativeMessagingHostsDir(buildtools.Chrome, buildtools.NativeMessagingScope(99), home); err == nil {
+		t.Error("expected error for invalid scope")
+	}
+	if _, err := buildtools.NativeMessagingHostsDir(buildtools.Safari, buildtools.UserScope, home); err == nil {
+		t.Error("expected error for Safari")
+	}
+	if _, err := buildtools.NativeMessagingHostsDir(buildtools.BrowserType(99), buildtools.UserScope, home); err == nil {
+		t.Error("expected error for unknown browser")
+	}
+}
+
+func TestNativeMessagingHelperSigningAndInstall(t *testing.T) {
+	bundle, helper := newHelperBundle(t)
+	signer := buildtools.NewSigner("Developer ID Application: Test", nil, nil, nil)
+	dryRunner := buildtools.NewCommandRunner(buildtools.WithDryRun(true))
+	ctx := t.Context()
+
+	h := buildtools.NativeMessagingHelper{
+		Executable: helper,
+		Name:       "my-helper",
+		Config: buildtools.NativeMessagingConfig{
+			Name:           "com.example.helper",
+			AllowedOrigins: []string{"chrome-extension://abcdefghijklmnopabcdefghijklmnop/"},
+		},
+	}
+
+	// SignHelper
+	step := bundle.SignHelper(signer, "my-helper")
+	res, err := step.Run(ctx, dryRunner)
+	if err != nil {
+		t.Fatalf("SignHelper failed: %v", err)
+	}
+	if res.Executable() != "codesign" {
+		t.Errorf("SignHelper executable = %q, want codesign", res.Executable())
+	}
+
+	// SignHelper empty name error
+	if _, err := bundle.SignHelper(signer, "").Run(ctx, dryRunner); err == nil {
+		t.Error("expected error for empty name in SignHelper")
+	}
+
+	// SignNativeMessagingHelper
+	signStep := bundle.SignNativeMessagingHelper(signer, h)
+	res, err = signStep.Run(ctx, dryRunner)
+	if err != nil {
+		t.Fatalf("SignNativeMessagingHelper failed: %v", err)
+	}
+	if res.Executable() != "codesign" {
+		t.Errorf("SignNativeMessagingHelper executable = %q, want codesign", res.Executable())
+	}
+
+	// InstallNativeMessagingManifest (dry-run)
+	installSteps := bundle.InstallNativeMessagingManifest(h, buildtools.Chrome, buildtools.UserScope)
+	for i, s := range installSteps {
+		if _, err := s.Run(ctx, dryRunner); err != nil {
+			t.Fatalf("installStep %d failed: %v", i, err)
+		}
+	}
+
+	// InstallNativeMessagingManifest rejected for Safari
+	safariSteps := bundle.InstallNativeMessagingManifest(h, buildtools.Safari, buildtools.UserScope)
+	if _, err := safariSteps[0].Run(ctx, dryRunner); err == nil {
+		t.Error("expected error for Safari in InstallNativeMessagingManifest")
+	}
+}

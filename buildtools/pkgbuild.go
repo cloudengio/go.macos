@@ -21,8 +21,9 @@ type PkgBuild struct {
 
 // Clean returns a Step that removes the BuildDir directory.
 func (p PkgBuild) Clean() Step {
-	if len(p.BuildDir) == 0 {
-		return ErrorStep(fmt.Errorf("no build dir specified"), "rm", "-rf")
+	cleanDir := filepath.Clean(p.BuildDir)
+	if len(p.BuildDir) == 0 || cleanDir == "/" || cleanDir == "." {
+		return ErrorStep(fmt.Errorf("invalid build dir specified: %q", p.BuildDir), "rm", "-rf", p.BuildDir)
 	}
 	return StepFunc(func(ctx context.Context, cmdRunner *CommandRunner) (StepResult, error) {
 		return cmdRunner.Run(ctx, "rm", "-rf", p.BuildDir)

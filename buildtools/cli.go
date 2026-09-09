@@ -145,6 +145,12 @@ type SigningConfig struct {
 	PerFileEntitlements *PerFileEntitlements `yaml:"perfile_entitlements"`
 }
 
+// Configured reports whether signing is configured. Signing requires
+// an identity to be specified.
+func (s SigningConfig) Configured() bool {
+	return len(s.Identity) > 0
+}
+
 // Signer returns a Signer based on the configuration.
 func (s SigningConfig) Signer() Signer {
 	return NewSigner(s.Identity, s.Entitlements, s.PerFileEntitlements, s.CodesignArguments)

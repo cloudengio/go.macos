@@ -25,20 +25,35 @@ func MkdirAll(d string) Step {
 
 // RmdirAll returns a Step that removes an app bundle and all its contents using rm -rf.
 func RmdirAll(d string) Step {
+	d = filepath.Clean(d)
 	if !strings.HasSuffix(d, ".app") {
 		return ErrorStep(fmt.Errorf("can only remove .app directories"), "rm", "-rf", d)
 	}
-	for _, dirs := range []string{"MacOS", "Resources"} {
-		if _, err := os.Stat(filepath.Join(d, "Contents", dirs)); err != nil {
-			return NoopStep("looks like the app bundle is empty")
+	return StepFunc(func(ctx context.Context, cmdRunner *CommandRunner) (StepResult, error) {
+		if _, err := os.Stat(d); err != nil {
+			if os.IsNotExist(err) {
+				return NewStepResult("directory does not exist, skipping removal", nil, nil, nil), nil
+			}
+			return ErrorStep(fmt.Errorf("error checking directory: %v", err), "rm", "-rf", d).Run(ctx, cmdRunner)
 		}
-	}
-	macos := filepath.Join(d, "Contents", "MacOS")
-	if _, err := os.Stat(macos); err != nil {
-		return ErrorStep(fmt.Errorf("executable not found in app bundle: %s", macos), "rm", "-rf", d)
+		return cmdRunner.Run(ctx, "rm", "-rf", d)
+	})
+}
+
+// ChmodAll returns a Step that recursively changes the permissions of a directory and its contents using chmod -R.
+func ChmodAll(d string, perm os.FileMode) Step {
+	d = filepath.Clean(d)
+	if !strings.HasSuffix(d, ".app") {
+		return ErrorStep(fmt.Errorf("can only chmod .app directories"), "chmod", "-R", fmt.Sprintf("%o", perm), d)
 	}
 	return StepFunc(func(ctx context.Context, cmdRunner *CommandRunner) (StepResult, error) {
-		return cmdRunner.Run(ctx, "rm", "-rf", d)
+		if _, err := os.Stat(d); err != nil {
+			if os.IsNotExist(err) {
+				return NewStepResult("directory does not exist, skipping chmod", nil, nil, nil), nil
+			}
+			return ErrorStep(fmt.Errorf("error checking directory: %v", err), "chmod", "-R", fmt.Sprintf("%o", perm), d).Run(ctx, cmdRunner)
+		}
+		return cmdRunner.Run(ctx, "chmod", "-R", fmt.Sprintf("%o", perm), d)
 	})
 }
 
