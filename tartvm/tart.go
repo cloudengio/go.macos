@@ -362,22 +362,38 @@ func convertError(args []string, stderr string, err error) error {
 	return fmt.Errorf("%s: %s: %w", cl, stderr, err)
 }
 
-// Clone runs "tart clone <source> <name>" and transitions to StateReadyToRun.
+// Clone runs "tart clone <source> <name>" and transitions to StateStopped.
+// If resources are configured, "tart set <name> ..." is run while
+// the instance is still in StateStopped.
+// If setting the resources fails the instance is left in StateStopped.
 func (inst *Instance) Clone(ctx context.Context) error {
 	inst.opMutex.Lock()
 	defer inst.opMutex.Unlock()
-	err := inst.runSyncExclusive(ctx,
+	setResources := inst.opts.resources.configured()
+	target := vms.StateStopped
+	if setResources {
+		// Stay in StateCloning until the resources have been set.
+		target = vms.StateCloning
+	}
+	if err := inst.runSyncExclusive(ctx,
 		vms.ActionClone,  // action
 		vms.StateCloning, // intermediate state
-		vms.StateStopped, // target state
-		"clone", inst.source, inst.name)
-	if err != nil {
+		target,           // target state
+		"clone", inst.source, inst.name); err != nil {
 		return err
 	}
-	if !inst.opts.resources.configured() {
+	if !setResources {
 		return nil
 	}
-	if err := SetResources(ctx, inst.opts.tartBinary, inst.name, inst.opts.resources); err != nil {
+	args := append([]string{"set", inst.name}, inst.opts.resources.flags()...)
+	if err := inst.runSyncExclusive(ctx,
+		vms.ActionNone,   // action: setting resources is not a state transition
+		vms.StateStopped, // intermediate state: the VM is stopped whilst its resources are set
+		vms.StateStopped, // target state
+		args...); err != nil {
+		// The VM exists but is not configured as requested, mark it as
+		// such so that it can be deleted.
+		inst.setState(vms.StateStopped)
 		return fmt.Errorf("setting resources for %s: %w", inst.name, err)
 	}
 	return nil
