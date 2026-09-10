@@ -362,11 +362,10 @@ func convertError(args []string, stderr string, err error) error {
 	return fmt.Errorf("%s: %s: %w", cl, stderr, err)
 }
 
-// Clone runs "tart clone <source> <name>" and transitions to StateReadyToRun.
-// If resources are configured, "tart set <name> ..." is run before the
-// transition to StateStopped, ie. the instance remains in StateCloning until
-// its resources have been set. If setting the resources fails the instance
-// is left in StateErrorUnknown so that it can be deleted.
+// Clone runs "tart clone <source> <name>" and transitions to StateStopped.
+// If resources are configured, "tart set <name> ..." is run while
+// the instance is still in StateStopped.
+// If setting the resources fails the instance is left in StateStopped.
 func (inst *Instance) Clone(ctx context.Context) error {
 	inst.opMutex.Lock()
 	defer inst.opMutex.Unlock()
@@ -394,7 +393,7 @@ func (inst *Instance) Clone(ctx context.Context) error {
 		args...); err != nil {
 		// The VM exists but is not configured as requested, mark it as
 		// such so that it can be deleted.
-		inst.setState(vms.StateErrorUnknown)
+		inst.setState(vms.StateStopped)
 		return fmt.Errorf("setting resources for %s: %w", inst.name, err)
 	}
 	return nil
