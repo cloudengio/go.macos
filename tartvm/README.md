@@ -157,6 +157,10 @@ reference to clone from; name is the local VM name.
 func (inst *Instance) Clone(ctx context.Context) error
 ```
 Clone runs "tart clone <source> <name>" and transitions to StateReadyToRun.
+If resources are configured, "tart set <name> ..." is run before the
+transition to StateStopped, ie. the instance remains in StateCloning until
+its resources have been set. If setting the resources fails the instance is
+left in StateErrorUnknown so that it can be deleted.
 
 
 ```go
