@@ -290,3 +290,16 @@ func writeInfoPlist(path string, info any) Step {
 		return NewStepResult("write "+name, []string{path}, nil, err), err
 	})
 }
+
+// ReadInfoPlist reads and unmarshals an InfoPlist from the specified file path.
+func ReadInfoPlist(path string) (InfoPlist, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return InfoPlist{}, err
+	}
+	var info InfoPlist
+	if _, err := plist.Unmarshal(data, &info); err != nil {
+		return InfoPlist{}, fmt.Errorf("failed to unmarshal Info.plist: %w", err)
+	}
+	return info, nil
+}

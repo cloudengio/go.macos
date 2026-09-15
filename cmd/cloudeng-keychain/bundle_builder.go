@@ -26,7 +26,7 @@
 //
 // Run via `go generate` (see keychain_cmd.go) or directly:
 //
-//	go run bundle_builder.go [-o keychain.app] [-notarize]
+//	go run bundle_builder.go [-output keychain.app] [-softlink] [-install] [-notarize]
 package main
 
 import (
@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"cloudeng.io/cmdutil/cmdyaml"
 	"cloudeng.io/cmdutil/flags"
@@ -56,6 +57,8 @@ const (
 
 type builderFlags struct {
 	Output   string `flags:"output,cloudeng-keychain.app,output app bundle path"`
+	Softlink bool   `flags:"softlink,true,create a softlink to the executable in the bundle"`
+	Install  bool   `flags:"install,false,install the app bundle to GOBIN or PATH"`
 	Notarize bool   `flags:"notarize,false,request notarization of the signed bundle"`
 	Verbose  bool   `flags:"verbose,false,enable verbose logging"`
 }
@@ -64,13 +67,13 @@ func main() {
 	var bf builderFlags
 	flags.RegisterAndParseMust("flags", &bf)
 
-	if err := run(bf.Output, bf.Notarize, bf.Verbose); err != nil {
+	if err := run(bf.Output, bf.Softlink, bf.Install, bf.Notarize, bf.Verbose); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(out string, notarize, verbose bool) error {
+func run(out string, softlink, install, notarize, verbose bool) error {
 	ctx := context.Background()
 
 	cfg, err := loadPluginConfig(ctx, pluginConfigYML)
@@ -104,10 +107,10 @@ func run(out string, notarize, verbose bool) error {
 	}
 	defer cleanupPlugin()
 
-	return buildBundle(ctx, out, cfg, outerInfo, innerInfo, client, plugin, notarize, verbose)
+	return buildBundle(ctx, out, softlink, install, cfg, outerInfo, innerInfo, client, plugin, notarize, verbose)
 }
 
-func buildBundle(ctx context.Context, out string, cfg gobundleconfig.T, outerInfo, innerInfo buildtools.InfoPlist, client, plugin string, notarize, verbose bool) error {
+func buildBundle(ctx context.Context, out string, softlink, install bool, cfg gobundleconfig.T, outerInfo, innerInfo buildtools.InfoPlist, client, plugin string, notarize, verbose bool) error {
 	outer := buildtools.AppBundle{Path: out, Info: outerInfo}
 	inner := buildtools.AppBundle{
 		Path: outer.Contents(nestedDir, pluginExecutable+".app"),
@@ -154,6 +157,14 @@ func buildBundle(ctx context.Context, out string, cfg gobundleconfig.T, outerInf
 	runner.AddSteps(inner.SetExecutablePermissions(plugin, cfg.Permissions.ExecutableMode()))
 	runner.AddSteps(inner.SetMacOSDirPermissions(cfg.Permissions.MacOSDirMode()))
 
+	link := filepath.Join(filepath.Dir(out), clientExecutable)
+	if softlink {
+		runner.AddSteps(outer.SymlinkExecutable(link))
+	}
+	if install {
+		runner.AddSteps(outer.Install(softlink))
+	}
+
 	results := runner.Run(ctx, buildtools.NewCommandRunner())
 	for _, r := range results {
 		if r.Error() != nil {
@@ -164,6 +175,22 @@ func buildBundle(ctx context.Context, out string, cfg gobundleconfig.T, outerInf
 		return err
 	}
 	fmt.Printf("created app bundle %s\n", out)
+	if softlink {
+		if dest, err := os.Readlink(link); err == nil {
+			fmt.Printf("created symlink %s -> %s\n", link, dest)
+		}
+	}
+	if install {
+		if installDir, err := buildtools.InstallDir(ctx); err == nil {
+			fmt.Printf("installed app bundle to %s\n", filepath.Join(installDir, filepath.Base(out)))
+			if softlink {
+				installedLink := filepath.Join(installDir, clientExecutable)
+				if dest, err := os.Readlink(installedLink); err == nil {
+					fmt.Printf("created symlink %s -> %s\n", installedLink, dest)
+				}
+			}
+		}
+	}
 	return nil
 }
 

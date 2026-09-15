@@ -376,3 +376,64 @@ func TestAppBundleSigningAndClean(t *testing.T) {
 		t.Errorf("expected bundle %q to be removed by Clean", bundle.Path)
 	}
 }
+
+func TestAppBundleSymlinkExecutable(t *testing.T) {
+	bundle, tempDir := setupTestAppBundle(t)
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	srcExe := filepath.Join(tempDir, "built_myapp")
+	if err := os.WriteFile(srcExe, []byte("binary"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bundle.CopyExecutable(srcExe).Run(ctx, runner); err != nil {
+		t.Fatalf("CopyExecutable failed: %v", err)
+	}
+
+	linkPath := filepath.Join(tempDir, "myapp-link")
+	if _, err := bundle.SymlinkExecutable(linkPath).Run(ctx, runner); err != nil {
+		t.Fatalf("SymlinkExecutable failed: %v", err)
+	}
+	fi, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("Lstat failed: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected symlink, got %v", fi.Mode())
+	}
+	dest, err := os.Readlink(linkPath)
+	if err != nil {
+		t.Fatalf("Readlink failed: %v", err)
+	}
+	// Verify that reading through the symlink resolves to the copied executable.
+	content, err := os.ReadFile(linkPath)
+	if err != nil {
+		t.Fatalf("reading through symlink failed: %v", err)
+	}
+	if string(content) != "binary" {
+		t.Errorf("got content %q, want %q", string(content), "binary")
+	}
+	if !filepath.IsAbs(dest) {
+		dest = filepath.Join(filepath.Dir(linkPath), dest)
+	}
+	if dest != bundle.ExecutablePath() {
+		t.Errorf("dest = %q, want %q", dest, bundle.ExecutablePath())
+	}
+
+	// Test overwriting existing link
+	if _, err := bundle.SymlinkExecutable(linkPath).Run(ctx, runner); err != nil {
+		t.Fatalf("SymlinkExecutable overwrite failed: %v", err)
+	}
+
+	// Empty link should error
+	if _, err := bundle.SymlinkExecutable("").Run(ctx, runner); err == nil {
+		t.Error("expected empty link to fail")
+	}
+
+	// Empty CFBundleExecutable should error
+	emptyBundle := bundle
+	emptyBundle.Info.CFBundleExecutable = ""
+	if _, err := emptyBundle.SymlinkExecutable(linkPath).Run(ctx, runner); err == nil {
+		t.Error("expected empty CFBundleExecutable to fail")
+	}
+}

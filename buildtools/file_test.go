@@ -342,3 +342,40 @@ func TestIsValidIconSetDir(t *testing.T) {
 		t.Error("expected .png to fail IsValidIconSetDir")
 	}
 }
+
+func TestSymlink(t *testing.T) {
+	tempDir := t.TempDir()
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	target := filepath.Join(tempDir, "target.txt")
+	if err := os.WriteFile(target, []byte("hello"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	link := filepath.Join(tempDir, "link.txt")
+	if _, err := buildtools.Symlink(target, link).Run(ctx, runner); err != nil {
+		t.Fatalf("Symlink failed: %v", err)
+	}
+
+	fi, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("Lstat failed: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected symlink mode, got %v", fi.Mode())
+	}
+
+	// Overwrite existing symlink
+	if _, err := buildtools.Symlink(target, link).Run(ctx, runner); err != nil {
+		t.Fatalf("Symlink overwrite failed: %v", err)
+	}
+
+	// Empty arguments should error
+	if _, err := buildtools.Symlink("", link).Run(ctx, runner); err == nil {
+		t.Error("expected empty target to fail")
+	}
+	if _, err := buildtools.Symlink(target, "").Run(ctx, runner); err == nil {
+		t.Error("expected empty link to fail")
+	}
+}
