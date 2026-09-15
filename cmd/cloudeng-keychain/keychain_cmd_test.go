@@ -243,7 +243,7 @@ func TestKeyInfoCreateWithManualJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	customFile := filepath.Join(tmpDir, "custom.json")
 
-	ki := keys.NewInfo("api-key-1", "service-user", []byte("my-static-token"))
+	ki := keys.NewInfo("service-user", "api-key-1", []byte("my-static-token"))
 	if err := keyscmd.SafeWriteKeyInfoJSON(ctx, ki, customFile, 0600); err != nil {
 		t.Fatalf("SafeWriteKeyInfoJSON: %v", err)
 	}
