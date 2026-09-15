@@ -164,7 +164,7 @@ func TestIntegration(t *testing.T) {
 	ctx = file.ContextWithReadWriteFS(ctx, inMemFS)
 
 	// Set up AWS credentials in in-memory keychain store
-	ki := awsconfig.NewKeyInfo("test-key", "test-user", []byte("test-secret-key"), awsconfig.KeyInfoExtra{
+	ki := awsconfig.NewKeyInfo("test-user", "test-key", []byte("test-secret-key"), awsconfig.KeyInfoExtra{
 		AccessKeyID: "test-access-key",
 		Region:      "us-east-1",
 	})

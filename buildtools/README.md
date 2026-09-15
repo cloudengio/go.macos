@@ -59,6 +59,31 @@ func GUIDomain() string
 ```
 GUIDomain returns the launchd GUI domain target for the current user.
 
+### Func GoBuildEnvForMacOSVersion
+```go
+func GoBuildEnvForMacOSVersion(version string) []string
+```
+GoBuildEnvForMacOSVersion returns the environment variables needed for go
+build and cgo to target the specified macOS version, as typically specified
+by LSMinimumSystemVersion in an Info.plist.
+
+The returned environment variables include:
+  - MACOSX_DEPLOYMENT_TARGET=<version>
+  - CGO_CFLAGS=-mmacosx-version-min=<version>
+  - CGO_CXXFLAGS=-mmacosx-version-min=<version>
+  - CGO_LDFLAGS=-mmacosx-version-min=<version>
+
+If version is empty after trimming whitespace and any leading 'v' prefix,
+nil is returned.
+
+### Func InstallDir
+```go
+func InstallDir(ctx context.Context, searchDirs ...string) (string, error)
+```
+InstallDir returns the first directory that exists and is writable from the
+candidate directories. If searchDirs is empty, it checks the value of 'go
+env GOBIN' followed by each directory in the PATH environment variable.
+
 ### Func NativeMessagingHostsDir
 ```go
 func NativeMessagingHostsDir(browser BrowserType, scope NativeMessagingScope, home string) (string, error)
@@ -138,10 +163,11 @@ Resources directory.
 
 
 ```go
-func (b AppBundle) Clean() Step
+func (b AppBundle) Clean() []Step
 ```
-Clean returns a Step that removes the app bundle directory and all its
-contents.
+Clean returns Steps that removes the app bundle directory and all its
+contents. The permissions of the app bundle directory are set to 0700 before
+removal to ensure that it can be deleted.
 
 
 ```go
@@ -195,6 +221,16 @@ func (b AppBundle) Helpers(elem ...string) string
 ```
 Helpers returns the path to elem within the bundle's Contents/Helpers
 directory, which is where a native messaging helper is placed.
+
+
+```go
+func (b AppBundle) Install(softlink bool, searchDirs ...string) Step
+```
+Install returns a Step that installs the app bundle into the first directory
+that exists and is writable, starting with the value of 'go env GOBIN'
+followed by the members of PATH (or searchDirs if specified). If softlink
+is true, a symbolic link to the bundle's main executable is created in the
+install directory with the same name as the executable.
 
 
 ```go
@@ -283,7 +319,8 @@ bundle.
 func (b AppBundle) SetExecutablePermissions(src string, perms fs.FileMode) Step
 ```
 SetExecutablePermissions returns a Step that sets the permissions of
-the executable referenced in the Info.plist within the app bundle. If
+the executable referenced in the Info.plist within the app bundle.
+If the permissions are 0, it returns a NoopStep. Otherwise, if
 Info.CFBundleExecutable is not set and src is provided, filepath.Base(src)
 is used. If both are empty, it returns an ErrorStep.
 
@@ -292,7 +329,7 @@ is used. If both are empty, it returns an ErrorStep.
 func (b AppBundle) SetMacOSDirPermissions(perms fs.FileMode) Step
 ```
 SetMacOSDirPermissions returns a Step that sets the permissions of the MacOS
-directory
+directory. If the permissions are 0, it returns a NoopStep.
 
 
 ```go
@@ -344,6 +381,15 @@ func (b AppBundle) Staple() Step
 ```
 Staple returns a Step that staples a notarization ticket into the bundle so
 that Gatekeeper can validate it offline.
+
+
+```go
+func (b AppBundle) SymlinkExecutable(link string) Step
+```
+SymlinkExecutable returns a Step that creates a symbolic link to the
+bundle's main executable at the specified link path. If target can be made
+relative to the directory containing the link, a relative symlink is used so
+that the bundle and link remain valid if moved together.
 
 
 ```go
@@ -689,11 +735,11 @@ returned.
 ```go
 func (f File) RewriteHOME() File
 ```
-RewriteHOME rewrites any occurrences of $HOME in the source and destination
-paths to ${TARGET_HOME} which is set in the bash script preamble. Use this
-with the BashInstallPreamble to access the current logged in user's home
-directory since $HOME does not refer to the user's home directory from
-within the installer environment.
+RewriteHOME rewrites any occurrences of $HOME or ${HOME} in the source
+and destination paths to ${TARGET_HOME} which is set in the bash script
+preamble. Use this with the BashInstallPreamble to access the current logged
+in user's home directory since $HOME does not refer to the user's home
+directory from within the installer environment.
 
 
 
@@ -851,6 +897,16 @@ InfoPlist represents the contents of a macOS bundle's Info.plist file.
 Commonly used keys have fields of their own; every other key is captured by
 Extra, so an InfoPlist round-trips without loss.
 
+### Functions
+
+```go
+func ReadInfoPlist(path string) (InfoPlist, error)
+```
+ReadInfoPlist reads and unmarshals an InfoPlist from the specified file
+path.
+
+
+
 ### Methods
 
 ```go
@@ -868,6 +924,17 @@ func (ipl InfoPlist) Validate() error
 ```
 Validate reports whether the keys required to describe a launchable bundle
 are present, including those of any XPCService dictionary.
+
+
+```go
+func (ipl InfoPlist) WithDefaults(binary string) InfoPlist
+```
+WithDefaults returns a copy of ipl with any empty fields populated with
+default values derived from the binary name. The filepath.Base of the
+binary is used as a default for CFBundleName, CFBundleExecutable and
+CFBundleDisplayName, and "com.example.<base>" for CFBundleIdentifier.
+CFBundlePackageType is set to "APPL" and LSMinimumSystemVersion to "10.15".
+CFBundleVersion is set to "0.0.0" if empty.
 
 
 
@@ -1167,6 +1234,22 @@ func (n NotaryConfig) Configured() bool
 ```
 Configured reports whether any notarization credentials have been supplied,
 i.e. whether Notarize can run.
+
+
+```go
+func (n NotaryConfig) ValidateSigning(signing SigningConfig) error
+```
+ValidateSigning checks that the signing configuration is compatible with
+notarization. Notarization requires that the bundle is signed with a
+Developer ID identity, so this checks that the signing configuration is
+present and that the identity is not an Apple Development or Mac Developer
+identity.
+
+
+```go
+func (n NotaryConfig) ValidateSigningConfig(signing SigningConfig) error
+```
+ValidateSigningConfig is an alias for ValidateSigning.
 
 
 
@@ -1605,6 +1688,13 @@ a yaml config file.
 ### Methods
 
 ```go
+func (s SigningConfig) Configured() bool
+```
+Configured reports whether signing is configured. Signing requires an
+identity to be specified.
+
+
+```go
 func (s SigningConfig) Signer() Signer
 ```
 Signer returns a Signer based on the configuration.
@@ -1622,6 +1712,13 @@ type Step interface {
 Step represents a single operation that can be executed by the StepRunner.
 
 ### Functions
+
+```go
+func ChmodAll(d string, perm os.FileMode) Step
+```
+ChmodAll returns a Step that recursively changes the permissions of a
+directory and its contents using chmod -R.
+
 
 ```go
 func Copy(oldname, newname string) Step
@@ -1702,6 +1799,13 @@ using rm -rf.
 func StepFunc(f func(context.Context, *CommandRunner) (StepResult, error)) Step
 ```
 StepFunc is a helper to create Steps from functions.
+
+
+```go
+func Symlink(target, link string) Step
+```
+Symlink returns a Step that creates a symbolic link pointing to target at
+link using ln -s -f.
 
 
 ```go

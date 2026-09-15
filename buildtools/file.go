@@ -96,6 +96,16 @@ func Copy(oldname, newname string) Step {
 	})
 }
 
+// Symlink returns a Step that creates a symbolic link pointing to target at link using ln -s -f.
+func Symlink(target, link string) Step {
+	if target == "" || link == "" {
+		return ErrorStep(fmt.Errorf("target and link must not be empty"), "ln", "-s", "-f")
+	}
+	return StepFunc(func(ctx context.Context, cmdRunner *CommandRunner) (StepResult, error) {
+		return cmdRunner.Run(ctx, "ln", "-s", "-f", target, link)
+	})
+}
+
 // chmodBits returns the traditional UNIX permission, setuid, setgid, and sticky
 // bits from perm formatted for chmod, masking out any file type bits (such as
 // os.ModeDir or os.ModeSymlink).

@@ -135,6 +135,24 @@ func (b AppBundle) ExecutablePath() string {
 	return filepath.Join(b.Path, "Contents", "MacOS", b.Info.CFBundleExecutable)
 }
 
+// SymlinkExecutable returns a Step that creates a symbolic link to the bundle's
+// main executable at the specified link path. If target can be made relative to
+// the directory containing the link, a relative symlink is used so that the bundle
+// and link remain valid if moved together.
+func (b AppBundle) SymlinkExecutable(link string) Step {
+	if link == "" {
+		return ErrorStep(fmt.Errorf("link path not specified"), "ln", "-s", "-f")
+	}
+	if b.Info.CFBundleExecutable == "" {
+		return ErrorStep(fmt.Errorf("executable not specified in Info.plist"), "ln", "-s", "-f")
+	}
+	target := b.ExecutablePath()
+	if rel, err := filepath.Rel(filepath.Dir(link), target); err == nil {
+		target = rel
+	}
+	return Symlink(target, link)
+}
+
 // InstallProvisioningProfile returns a Step that copies the provisioning profile
 // into the app bundle.
 // See https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles for an explanation of
@@ -147,7 +165,7 @@ func (b AppBundle) InstallProvisioningProfile(profile string) Step {
 	return Copy(profile, dst)
 }
 
-// Clean returns Steps that removes the app bundle directory and all its contents.
+// Clean returns Steps that remove the app bundle directory and all its contents.
 // The permissions of the app bundle directory are set to 0700 before removal to
 // ensure that it can be deleted.
 func (b AppBundle) Clean() []Step {
