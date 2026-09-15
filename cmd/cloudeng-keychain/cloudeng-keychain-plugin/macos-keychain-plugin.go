@@ -20,12 +20,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		possiblyHandleCommandLine(os.Args[1:])
+	}
 	if err := machutils.EnsureParentProcessSafe(); err != nil {
 		fmt.Fprintf(os.Stderr, "unsafe/untrusted parent process: error: %v\n", err)
 		os.Exit(1)
-	}
-	if len(os.Args) > 1 {
-		possiblyHandleCommandLine(os.Args[1:])
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	ctx := ctxlog.WithLogger(context.Background(), logger)

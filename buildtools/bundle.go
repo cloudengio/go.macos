@@ -165,7 +165,7 @@ func (b AppBundle) InstallProvisioningProfile(profile string) Step {
 	return Copy(profile, dst)
 }
 
-// Clean returns Steps that removes the app bundle directory and all its contents.
+// Clean returns Steps that remove the app bundle directory and all its contents.
 // The permissions of the app bundle directory are set to 0700 before removal to
 // ensure that it can be deleted.
 func (b AppBundle) Clean() []Step {

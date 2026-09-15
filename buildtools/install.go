@@ -15,12 +15,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func isDirWritable(dir string) bool {
+func isDirWritableAndExecutable(dir string) bool {
 	fi, err := os.Stat(dir)
 	if err != nil || !fi.IsDir() {
 		return false
 	}
-	return unix.Access(dir, unix.W_OK) == nil
+	return unix.Access(dir, unix.W_OK|unix.X_OK) == nil
 }
 
 func goEnvGOBIN(ctx context.Context) string {
@@ -62,7 +62,7 @@ func InstallDir(ctx context.Context, searchDirs ...string) (string, error) {
 		if abs, err := filepath.Abs(clean); err == nil {
 			clean = abs
 		}
-		if isDirWritable(clean) {
+		if isDirWritableAndExecutable(clean) {
 			return clean, nil
 		}
 	}
