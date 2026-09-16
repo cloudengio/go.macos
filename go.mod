@@ -43,9 +43,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/kms v1.60.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.49.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/kms v1.61.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.73.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.10.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.0 // indirect
@@ -75,4 +75,5 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260911204522-f61a6ca850bd // indirect
 )

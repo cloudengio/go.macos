@@ -247,7 +247,7 @@ func (c pluginCmd) SetKeyInfo(ctx context.Context, f any, args []string) error {
 		return handleError(fmt.Errorf("failed to read key info from %s: %w", args[0], err))
 	}
 	kw := keyscmd.NewKeyWriter(fs)
-	if err := kw.SetKeys(ctx, fl.KeyChainItem, false, ki); err != nil {
+	if err := kw.SetKeys(ctx, fl.KeyChainItem, fl.UpdateInPlace, ki); err != nil {
 		return handleError(fmt.Errorf("failed to write key info to %s: %w", fl.KeyChainItem, err))
 	}
 	return nil
