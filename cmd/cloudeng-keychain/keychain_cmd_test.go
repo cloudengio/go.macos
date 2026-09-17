@@ -315,3 +315,84 @@ func TestDeleteKeyInfoUsesWriteFlags(t *testing.T) {
 	// Delete key
 	mustRunCLI(ctx, t, "key-info", "delete", "--keychain-item=items", "--key-user=alice", "--key-id=id-1")
 }
+
+// TestKeyInfoSetUpdateInPlace verifies that 'key-info set' rejects an update to
+// an existing key unless --keychain-update-in-place is set, and that when it is
+// set the stored token is replaced whilst the other keys in the item, and the
+// key's own identity, are preserved. Without this, a set that hardcodes
+// update=false regresses silently: the lifecycle test only ever sets keys that
+// do not exist yet.
+func TestKeyInfoSetUpdateInPlace(t *testing.T) {
+	ctx := context.Background()
+	p := keychaintestutil.New()
+	inMemFS := keychaintestutil.NewFS(p, true)
+	ctx = file.ContextWithReadWriteFS(ctx, inMemFS)
+
+	tmpDir := t.TempDir()
+	aliceFile := filepath.Join(tmpDir, "alice.json")
+	bobFile := filepath.Join(tmpDir, "bob.json")
+
+	// Populate the item with two distinct keys; neither exists yet so no
+	// update is required.
+	mustRunCLI(ctx, t, "key-info", "create", "--user=alice", "--id=token-1", "--size=16", "--format=hex", aliceFile)
+	mustRunCLI(ctx, t, "key-info", "create", "--user=bob", "--id=token-2", "--size=16", "--format=hex", bobFile)
+	mustRunCLI(ctx, t, "key-info", "set", "--keychain-item=my-keys", aliceFile)
+	mustRunCLI(ctx, t, "key-info", "set", "--keychain-item=my-keys", bobFile)
+
+	origAlice := mustReadKeyInfo(ctx, t, aliceFile).Token().Value()
+	origBob := mustReadKeyInfo(ctx, t, bobFile).Token().Value()
+
+	// A new value for an existing (user, id).
+	updatedFile := filepath.Join(tmpDir, "alice-updated.json")
+	updated := keys.NewInfo("alice", "token-1", []byte("rotated-token-value"))
+	if err := keyscmd.SafeWriteKeyInfoJSON(ctx, updated, updatedFile, 0600); err != nil {
+		t.Fatalf("SafeWriteKeyInfoJSON: %v", err)
+	}
+
+	// 1. Without --keychain-update-in-place the existing key must not be
+	// overwritten.
+	err := runCLI(ctx, "key-info", "set", "--keychain-item=my-keys", updatedFile)
+	if err == nil {
+		t.Fatal("key-info set of an existing key: got nil error, want an error")
+	}
+	if !errors.Is(err, keyscmd.ErrUpdateNotAllowed) {
+		t.Errorf("key-info set of an existing key: got %v, want it to wrap %v", err, keyscmd.ErrUpdateNotAllowed)
+	}
+	unchanged := filepath.Join(tmpDir, "alice-unchanged.json")
+	mustRunCLI(ctx, t, "key-info", "get", "--keychain-item=my-keys", "--key-user=alice", "--key-id=token-1", unchanged)
+	if got, want := mustReadKeyInfo(ctx, t, unchanged).Token().Value(), origAlice; !bytes.Equal(got, want) {
+		t.Errorf("token after a rejected set = %q, want the original %q", got, want)
+	}
+
+	// 2. With --keychain-update-in-place the update must be applied.
+	mustRunCLI(ctx, t, "key-info", "set", "--keychain-item=my-keys", "--keychain-update-in-place=true", updatedFile)
+
+	gotFile := filepath.Join(tmpDir, "alice-readback.json")
+	mustRunCLI(ctx, t, "key-info", "get", "--keychain-item=my-keys", "--key-user=alice", "--key-id=token-1", gotFile)
+	gotAlice := mustReadKeyInfo(ctx, t, gotFile)
+	wantKeyInfo(t, gotAlice, "alice", "token-1")
+	if got, want := gotAlice.Token().Value(), []byte("rotated-token-value"); !bytes.Equal(got, want) {
+		t.Errorf("token after an in-place update = %q, want %q", got, want)
+	}
+
+	// 3. The other key in the item must be preserved, unchanged.
+	bobReadBack := filepath.Join(tmpDir, "bob-readback.json")
+	mustRunCLI(ctx, t, "key-info", "get", "--keychain-item=my-keys", "--key-user=bob", "--key-id=token-2", bobReadBack)
+	gotBob := mustReadKeyInfo(ctx, t, bobReadBack)
+	wantKeyInfo(t, gotBob, "bob", "token-2")
+	if got, want := gotBob.Token().Value(), origBob; !bytes.Equal(got, want) {
+		t.Errorf("bob's token after updating alice = %q, want %q", got, want)
+	}
+
+	// 4. The update must replace alice's key rather than add a second one.
+	listOut, err := filetestutil.CaptureStdout(func() error {
+		return runCLI(ctx, "key-info", "list", "--keychain-item=my-keys")
+	})
+	if err != nil {
+		t.Fatalf("key-info list: %v", err)
+	}
+	wantContains(t, string(listOut), "token-1[alice]", "token-2[bob]")
+	if got, want := len(strings.Split(strings.TrimSpace(string(listOut)), "\n")), 2; got != want {
+		t.Errorf("keys in item after an in-place update = %d, want %d: %s", got, want, listOut)
+	}
+}
