@@ -39,9 +39,9 @@ func NewWriteRequest(keyname string, contents []byte, cfg Config) (plugins.Reque
 // KeychainFlags are commonly required flags for working with
 // the MacOS keychain plugin.
 type KeychainFlags struct {
-	Binary               string `subcmd:"keychain-plugin,,direct path to the plugin binary, leave empty to use the default"`
-	KeychainBundle       string `subcmd:"keychain-app-bundle,,'bundle that contains the plugin binary, use directly if the bundle is an absolute path, otherwise look for in /Applications and $PATH', leave empty to use the default"`
-	KeychainPluginBundle string `subcmd:"keychain-plugin-bundle,'bundle that contains the plugin binary, use directly if the bundle is an absolute path, otherwise look for in /Applications and $PATH', leave empty to use the default"`
+	Binary               string `subcmd:"keychain-plugin,,'direct path to the plugin binary; leave empty to use the default'"`
+	KeychainBundle       string `subcmd:"keychain-app-bundle,,'bundle that contains the plugin binary, use directly if the bundle is an absolute path, otherwise look for in /Applications and $PATH; leave empty to use the default.'"`
+	KeychainPluginBundle string `subcmd:"keychain-plugin-bundle,,'bundle that contains the plugin binary, use directly if the bundle is an absolute path, otherwise look for in /Applications and $PATH; leave empty to use the default'"`
 	Account              string `subcmd:"keychain-account,,account that the keychain item belongs to"`
 	OnlyUsePlugin        bool   `subcmd:"keychain-only-use-plugin,false,'require the keychain plugin; if false and no plugin binary is found the keychain is accessed directly, in-process'"`
 }

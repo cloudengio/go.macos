@@ -1,34 +1,21 @@
 # [cloudeng.io/macos/cmd/cloudeng-keychain](https://pkg.go.dev/cloudeng.io/macos/cmd/cloudeng-keychain?tab=doc)
 
 
-panic: field Binary: failed to parse tag: keychain-plugin,,direct path to
-the plugin binary, leave empty to use the default
+Usage of `cloudeng-keychain`
 
-goroutine 1 [running]:
-cloudeng.io/cmdutil/subcmd.(*CurrentCommand).MustRunner(0x30a32f663600?,
-0x30a32f585d28?, {0x100a38190?, 0x30a32f61a480?})
+    provide access to local keychains across multiple operating systems
 
-    /Users/cnicolaou/LocalOnly/dev/github.com/cloudengio/go.pkgs/cmdutil/subcmd/yaml.go:146 +0x80
+        read - read an item from the keychain writing to filename, if filename is - the item will be written to stdout. Valid values for flags are as follows:
+     --keychain-accessibility: after-first-unlock, after-first-unlock-this-device-only, always, always-this-device-only, default, when-passcode-set-this-device-only, when-unlocked, when-unlocked-this-device-only
+     --keychain-type: all, data-protection-local, file, icloud
+       write - write an item read from <filename> to the keychain, if filename is - the item will be read from stdin. Valid values for flags are as follows:
+      --keychain-accessibility: after-first-unlock, after-first-unlock-this-device-only, always, always-this-device-only, default, when-passcode-set-this-device-only, when-unlocked, when-unlocked-this-device-only
+      --keychain-type: data-protection-local, file, icloud
+    key-info - manage key info items in a keychain/secrets store, multiple key info items can be stored in a single item. In all cases if input or output is a filename, then "-" or "" will result in stdin or stdout being used as appropriate.
 
-main.cli.func1(0x30a32f663600)
+global flags: [--verbose=false]
 
-    /Users/cnicolaou/LocalOnly/dev/github.com/cloudengio/go.macos/cmd/cloudeng-keychain/keychain_cmd.go:62 +0x124
-
-cloudeng.io/cmdutil/subcmd.(*extension).Set(0x30a32f63c880?,
-0x30a32f63c880?)
-
-    /Users/cnicolaou/LocalOnly/dev/github.com/cloudengio/go.pkgs/cmdutil/subcmd/extensions.go:61 +0x28
-
-cloudeng.io/cmdutil/subcmd.(*CommandSetYAML).AddExtensions(...)
-
-    /Users/cnicolaou/LocalOnly/dev/github.com/cloudengio/go.pkgs/cmdutil/subcmd/extensions.go:77
-
-main.cli()
-
-    /Users/cnicolaou/LocalOnly/dev/github.com/cloudengio/go.macos/cmd/cloudeng-keychain/keychain_cmd.go:75 +0x29c
-
-main.main()
-
-    /Users/cnicolaou/LocalOnly/dev/github.com/cloudengio/go.macos/cmd/cloudeng-keychain/keychain_cmd.go:85 +0x1c
+    -verbose
+      set to enable verbose logging
 
 
