@@ -165,7 +165,7 @@ Resources directory.
 ```go
 func (b AppBundle) Clean() []Step
 ```
-Clean returns Steps that removes the app bundle directory and all its
+Clean returns Steps that remove the app bundle directory and all its
 contents. The permissions of the app bundle directory are set to 0700 before
 removal to ensure that it can be deleted.
 
