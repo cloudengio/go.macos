@@ -158,11 +158,29 @@ func buildBundle(ctx context.Context, out string, softlink, install bool, cfg go
 	runner.AddSteps(inner.SetMacOSDirPermissions(cfg.Permissions.MacOSDirMode()))
 
 	link := filepath.Join(filepath.Dir(out), clientExecutable)
+	pluginLink := filepath.Join(filepath.Dir(out), pluginExecutable)
 	if softlink {
 		runner.AddSteps(outer.SymlinkExecutable(link))
+		runner.AddSteps(inner.SymlinkExecutable(pluginLink))
 	}
 	if install {
 		runner.AddSteps(outer.Install(softlink))
+		if softlink {
+			// outer.Install creates the client symlink; add the plugin symlink separately
+			// because it targets an executable inside the nested sub-bundle.
+			runner.AddSteps(buildtools.StepFunc(func(ctx context.Context, cmdRunner *buildtools.CommandRunner) (buildtools.StepResult, error) {
+				installDir, err := buildtools.InstallDir(ctx)
+				if err != nil {
+					return buildtools.ErrorStep(err, "install-plugin-link").Run(ctx, cmdRunner)
+				}
+				installedOuter := filepath.Join(installDir, filepath.Base(filepath.Clean(out)))
+				installedInner := buildtools.AppBundle{
+					Path: filepath.Join(installedOuter, "Contents", nestedDir, pluginExecutable+".app"),
+					Info: innerInfo,
+				}
+				return installedInner.SymlinkExecutable(filepath.Join(installDir, pluginExecutable)).Run(ctx, cmdRunner)
+			}))
+		}
 	}
 
 	results := runner.Run(ctx, buildtools.NewCommandRunner())
@@ -179,6 +197,9 @@ func buildBundle(ctx context.Context, out string, softlink, install bool, cfg go
 		if dest, err := os.Readlink(link); err == nil {
 			fmt.Printf("created symlink %s -> %s\n", link, dest)
 		}
+		if dest, err := os.Readlink(pluginLink); err == nil {
+			fmt.Printf("created symlink %s -> %s\n", pluginLink, dest)
+		}
 	}
 	if install {
 		if installDir, err := buildtools.InstallDir(ctx); err == nil {
@@ -187,6 +208,10 @@ func buildBundle(ctx context.Context, out string, softlink, install bool, cfg go
 				installedLink := filepath.Join(installDir, clientExecutable)
 				if dest, err := os.Readlink(installedLink); err == nil {
 					fmt.Printf("created symlink %s -> %s\n", installedLink, dest)
+				}
+				installedPluginLink := filepath.Join(installDir, pluginExecutable)
+				if dest, err := os.Readlink(installedPluginLink); err == nil {
+					fmt.Printf("created symlink %s -> %s\n", installedPluginLink, dest)
 				}
 			}
 		}
