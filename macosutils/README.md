@@ -25,6 +25,23 @@ func ExecutablePath() (string, error)
 ExecutablePath returns the path of the executable that started the current
 process, following softlinks.
 
+Caveat for sandboxed processes started with a relative path: this is
+os.Executable(), which, on Darwin, returns the path exactly as passed to
+execve, resolving it against the current directory only if it was relative.
+The App Sandbox changes the process's current directory to its container
+(e.g. ~/Library/Containers/<bundle-id>/Data) as part of exec, before any Go
+code runs, so by the time ExecutablePath resolves a relative path, it joins
+it with the container directory, not the directory the process was actually
+launched from. The result is a path that does not exist. There is no way to
+recover the original directory once this has happened.
+
+This only affects a sandboxed binary launched with a relative path,
+for example by running "build/Foo.app/Contents/MacOS/Foo" directly from
+a shell to see its output live rather than via Console.app. It does not
+affect `open`, even given a relative path, since `open` resolves the path
+to absolute itself before launching the app. Launching with an absolute path
+avoids the problem entirely.
+
 ### Func InBundle
 ```go
 func InBundle(path string, parents ...string) (string, bool)
@@ -128,6 +145,12 @@ bundle's Contents/MacOS, ie. <outer>.app/Contents/MacOS/<inner>.app,
 so that the same heuristic resolves the inner bundle to the outer one.
 A bundle placed in Contents/Library is reachable by LocateInBundle, which
 walks the whole tree, but not by InBundle or ProcessInBundle.
+
+For a sandboxed process, this inherits the caveat documented on
+ExecutablePath: if the process was launched with a relative path directly
+(not via `open`), the executable path, and so the bundle path, will be
+wrong, and ProcessInBundle will report false negatives (or, in principle,
+match an unrelated bundle that happens to exist at the bogus path).
 
 ### Func TailBytes
 ```go

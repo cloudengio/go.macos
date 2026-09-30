@@ -223,3 +223,112 @@ func TestSignSafariWebExtension(t *testing.T) {
 		t.Error("expected error for empty extension name, got nil")
 	}
 }
+
+// TestAddSafariWebExtensionSteps verifies that resourceSteps run in place of
+// the default verbatim copy of Resources, while the .appex is still created,
+// signed identity established, and the handler executable copied in the same
+// way as AddSafariWebExtension.
+func TestAddSafariWebExtensionSteps(t *testing.T) {
+	bundle, ext := newSafariExtension(t)
+	appex := bundle.SafariWebExtensionPath(ext)
+	marker := filepath.Join(appex, "Contents", "Resources", "custom.txt")
+
+	custom := buildtools.WriteFile([]byte("custom resources"), 0600, marker)
+	if err := runHelperSteps(t, bundle.AddSafariWebExtensionSteps(ext, custom)); err != nil {
+		t.Fatalf("add extension: %v", err)
+	}
+
+	// The custom step ran...
+	if data, err := os.ReadFile(marker); err != nil {
+		t.Errorf("custom resource step did not run: %v", err)
+	} else if string(data) != "custom resources" {
+		t.Errorf("custom resource contents = %q", data)
+	}
+	// ...instead of the default verbatim copy.
+	if _, err := os.Stat(filepath.Join(appex, "Contents", "Resources", "manifest.json")); err == nil {
+		t.Error("manifest.json was copied verbatim; want only the custom resource step to have run")
+	}
+	// The rest is unaffected: .appex layout and handler executable.
+	for _, rel := range []string{
+		filepath.Join("Contents", "MacOS", "ExampleHandler"),
+		filepath.Join("Contents", "Info.plist"),
+	} {
+		if _, err := os.Stat(filepath.Join(appex, rel)); err != nil {
+			t.Errorf("%v: %v", rel, err)
+		}
+	}
+}
+
+// TestExtensionConfigResolveIdentifier verifies the "leading dot means
+// relative to the containing app's identifier" shorthand.
+func TestExtensionConfigResolveIdentifier(t *testing.T) {
+	for _, tc := range []struct {
+		identifier, containingAppID, want string
+	}{
+		{"io.example.Example.Extension", "io.example.Example", "io.example.Example.Extension"},
+		{".Extension", "io.example.Example", "io.example.Example.Extension"},
+		{"", "io.example.Example", ""}, // no leading dot: left as is, e.g. for validation to reject
+	} {
+		c := buildtools.ExtensionConfig{Identifier: tc.identifier}
+		if got := c.ResolveIdentifier(tc.containingAppID); got != tc.want {
+			t.Errorf("ResolveIdentifier(%q) with Identifier %q = %q, want %q",
+				tc.containingAppID, tc.identifier, got, tc.want)
+		}
+	}
+}
+
+// TestExtensionConfigInfoPlist verifies the field mapping from ExtensionConfig
+// to the base Info.plist it returns.
+func TestExtensionConfigInfoPlist(t *testing.T) {
+	c := buildtools.ExtensionConfig{
+		Name:       "Example Extension",
+		Identifier: ".Extension",
+		Executable: "ExampleHandler",
+	}
+	info := c.InfoPlist("io.example.Example")
+	if got, want := info.CFBundleIdentifier, "io.example.Example.Extension"; got != want {
+		t.Errorf("CFBundleIdentifier = %q, want %q", got, want)
+	}
+	if got, want := info.CFBundleName, c.Name; got != want {
+		t.Errorf("CFBundleName = %q, want %q", got, want)
+	}
+	if got, want := info.CFBundleDisplayName, c.Name; got != want {
+		t.Errorf("CFBundleDisplayName = %q, want %q", got, want)
+	}
+	if got, want := info.CFBundleExecutable, c.Executable; got != want {
+		t.Errorf("CFBundleExecutable = %q, want %q", got, want)
+	}
+}
+
+// TestExtensionConfigSafariWebExtension verifies the field mapping from
+// ExtensionConfig (plus a resolved executable and Info.plist) to
+// SafariWebExtension.
+func TestExtensionConfigSafariWebExtension(t *testing.T) {
+	c := buildtools.ExtensionConfig{
+		Name:           "Example Extension",
+		Resources:      "/tmp/resources",
+		PrincipalClass: "ExampleExtension.SafariWebExtensionHandler",
+	}
+	info := buildtools.InfoPlist{CFBundleIdentifier: "io.example.Example.Extension"}
+	ext := c.SafariWebExtension("/tmp/bin/ExampleHandler", info)
+	if got, want := ext.Name, c.Name; got != want {
+		t.Errorf("Name = %q, want %q", got, want)
+	}
+	if got, want := ext.Executable, "/tmp/bin/ExampleHandler"; got != want {
+		t.Errorf("Executable = %q, want %q", got, want)
+	}
+	if got, want := ext.Resources, c.Resources; got != want {
+		t.Errorf("Resources = %q, want %q", got, want)
+	}
+	if got, want := ext.PrincipalClass, c.PrincipalClass; got != want {
+		t.Errorf("PrincipalClass = %q, want %q", got, want)
+	}
+	if got, want := ext.Info.CFBundleIdentifier, info.CFBundleIdentifier; got != want {
+		t.Errorf("Info.CFBundleIdentifier = %q, want %q", got, want)
+	}
+}
+
+// ExtensionConfig.Resolve (building the Swift package handler binary) has
+// moved to the bundle builder that uses buildtools, mirroring AppBundle's
+// Go binary being built by its own caller: see buildSwiftBinary and its
+// tests in browser/cmd/extension-bundle-builder.

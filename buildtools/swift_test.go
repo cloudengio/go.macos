@@ -31,16 +31,19 @@ func TestSwiftApp(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Debug configuration
+	// The exact casing of the configuration name in the bin dir ("debug" vs.
+	// "Debug") depends on the Swift toolchain version, so it is matched
+	// case-insensitively.
 	debugApp := buildtools.NewSwiftApp(ctx, tmpDir, false)
 	debugBin := debugApp.BinDir()
-	if !strings.Contains(debugBin, "debug") {
+	if !strings.Contains(strings.ToLower(debugBin), "debug") {
 		t.Errorf("expected debug in bin dir, got: %s", debugBin)
 	}
 
 	// 2. Release configuration
 	releaseApp := buildtools.NewSwiftApp(ctx, tmpDir, true)
 	releaseBin := releaseApp.BinDir()
-	if !strings.Contains(releaseBin, "release") {
+	if !strings.Contains(strings.ToLower(releaseBin), "release") {
 		t.Errorf("expected release in bin dir, got: %s", releaseBin)
 	}
 

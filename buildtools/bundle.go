@@ -16,8 +16,8 @@ import (
 // See: https://developer.apple.com/documentation/bundleresources
 // See: https://developer.apple.com/documentation/bundleresources/placing-content-in-a-bundle
 type AppBundle struct {
-	Path string
-	Info InfoPlist
+	Path string    `yaml:"path"`
+	Info InfoPlist `yaml:"info"`
 }
 
 // Create returns the steps required to create the app bundle directory structure
