@@ -16,11 +16,15 @@ import (
 )
 
 func isDirWritableAndExecutable(dir string) bool {
-	fi, err := os.Stat(dir)
+	// Cleaned here, immediately before use, rather than trusting callers to
+	// have done so: dir ultimately comes from PATH/GOBIN entries or
+	// caller-supplied search directories.
+	clean := filepath.Clean(dir)
+	fi, err := os.Stat(clean) //nolint:gosec // G703: clean is filepath.Clean'd immediately above
 	if err != nil || !fi.IsDir() {
 		return false
 	}
-	return unix.Access(dir, unix.W_OK|unix.X_OK) == nil
+	return unix.Access(clean, unix.W_OK|unix.X_OK) == nil
 }
 
 func goEnvGOBIN(ctx context.Context) string {

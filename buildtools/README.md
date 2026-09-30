@@ -119,8 +119,8 @@ UserLaunchAgentsDir returns the current user's LaunchAgents directory.
 ### Type AppBundle
 ```go
 type AppBundle struct {
-	Path string
-	Info InfoPlist
+	Path string    `yaml:"path"`
+	Info InfoPlist `yaml:"info"`
 }
 ```
 AppBundle represents a macOS application bundle. See:
@@ -159,7 +159,19 @@ AddSafariWebExtension returns the steps required to add a Safari web
 extension to the bundle: the .appex is created in Contents/PlugIns with the
 Info.plist that identifies it as a web extension, the handler executable
 is copied into it, and the extension's own resources are copied into its
-Resources directory.
+Resources directory verbatim.
+
+AddSafariWebExtensionSteps is the same, but for a caller that needs to
+populate Contents/Resources some other way, e.g. building it rather than
+copying it as is.
+
+
+```go
+func (b AppBundle) AddSafariWebExtensionSteps(ext SafariWebExtension, resourceSteps ...Step) []Step
+```
+AddSafariWebExtensionSteps is AddSafariWebExtension, except that
+resourceSteps, run last, populate the .appex's Contents/Resources directory
+(already created) instead of a verbatim copy of ext.Resources.
 
 
 ```go
@@ -708,6 +720,71 @@ func (e Entitlements) MarshalYAML() (any, error)
 ```go
 func (e *Entitlements) UnmarshalYAML(node *yaml.Node) error
 ```
+
+
+
+
+### Type ExtensionConfig
+```go
+type ExtensionConfig struct {
+	// Name is the .appex name within Contents/PlugIns, without the .appex
+	// suffix.
+	Name string `yaml:"name"`
+	// Identifier is the extension's CFBundleIdentifier. A leading "." is
+	// shorthand for the containing app's identifier plus this suffix, e.g.
+	// ".Extension"; see ResolveIdentifier.
+	Identifier string `yaml:"identifier"`
+	// Executable is the CFBundleExecutable name the handler binary is copied
+	// to inside the .appex, e.g. "ExampleHandler".
+	Executable string `yaml:"executable"`
+	// Binary is the path to a prebuilt handler binary. If empty, the caller
+	// is expected to build one from the Swift package at SwiftDir.
+	Binary string `yaml:"binary"`
+	// Resources is the directory holding the web extension itself: its
+	// manifest.json and the scripts, pages and assets that it references.
+	Resources string `yaml:"resources"`
+	// PrincipalClass is the NSExtensionPrincipalClass, e.g.
+	// "ExampleExtension.SafariWebExtensionHandler".
+	PrincipalClass string `yaml:"principal_class"`
+	// SwiftDir is the directory of the Swift package that builds the handler
+	// binary, used by the caller when Binary is empty.
+	SwiftDir string `yaml:"swift_dir"`
+}
+```
+ExtensionConfig is the declarative, typically YAML-loaded configuration
+for a Safari web extension packaged inside an app bundle: where its handler
+binary comes from (prebuilt, or built from a Swift package), and its
+identity. SafariWebExtension is the resolved form built from it, once the
+handler binary exists (building it, e.g. from the Swift package at SwiftDir,
+is the caller's job, not ExtensionConfig's) and the rest of its Info.plist
+(such as version information) has been decided.
+
+### Methods
+
+```go
+func (c ExtensionConfig) InfoPlist(containingAppID string) InfoPlist
+```
+InfoPlist returns the base Info.plist for the extension, with
+CFBundleIdentifier (see ResolveIdentifier), CFBundleName, CFBundleExecutable
+and CFBundleDisplayName filled in from c. Every other field, such as version
+information or additional keys, is left for the caller to set on the result.
+
+
+```go
+func (c ExtensionConfig) ResolveIdentifier(containingAppID string) string
+```
+ResolveIdentifier returns c.Identifier, or, if it starts with ".",
+containingAppID+c.Identifier: the usual shorthand for "this extension's
+identifier is the containing app's plus a suffix".
+
+
+```go
+func (c ExtensionConfig) SafariWebExtension(executable string, info InfoPlist) SafariWebExtension
+```
+SafariWebExtension returns the resolved SafariWebExtension described by c:
+executable (typically the result of Resolve) as its handler binary, and info
+(typically c.InfoPlist, with version information and any other keys added)
+as its Info.plist.
 
 
 
