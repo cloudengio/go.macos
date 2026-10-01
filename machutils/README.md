@@ -43,6 +43,32 @@ ErrFailedToRetrieveParentUID = errors.New("failed to retrieve parent process UID
 ErrFailedToRetrieveParentUID is returned when the parent process UID cannot
 be retrieved from the kernel.
 
+### ErrFailedToRetrievePeerPID
+```go
+ErrFailedToRetrievePeerPID = errors.New("failed to retrieve peer process ID from the kernel")
+
+```
+ErrFailedToRetrievePeerPID is returned when the process ID of the peer of
+a Unix domain socket connection cannot be retrieved from the kernel.
+
+### ErrNoSelfRequirement
+```go
+ErrNoSelfRequirement = errors.New("could not determine this process's own designated code signing requirement")
+
+```
+ErrNoSelfRequirement is returned by SelfRequirementString when the running
+binary's own designated code signing requirement cannot be determined,
+typically because it is unsigned.
+
+### ErrPeerCodeSignatureInvalid
+```go
+ErrPeerCodeSignatureInvalid = errors.New("peer code signature is not valid or does not satisfy the requirement")
+
+```
+ErrPeerCodeSignatureInvalid is returned by VerifyPeerCodeSignature when the
+peer either cannot be identified, is no longer running, or does not satisfy
+the given requirement.
+
 
 
 ## Functions
@@ -128,6 +154,59 @@ It says nothing about the other ways a process can be confined on macOS.
 A profile applied by sandbox_init, or by being launched under sandbox-exec,
 leaves no trace in the code signature and is not reported here.
 
+### Func PeerPID
+```go
+func PeerPID(conn *net.UnixConn) (int32, error)
+```
+PeerPID returns the process ID of the process on the other end of conn,
+a Unix domain socket connection, via the LOCAL_PEEREPID socket option:
+a public, documented macOS extension to getsockopt (see unix(4)), unlike
+the csops interface the rest of this package otherwise resorts to, so no
+cgo is needed here.
 
+The PID alone proves nothing about which binary is running as that process;
+pair it with VerifyPeerCodeSignature to check that.
+
+### Func SelfRequirementString
+```go
+func SelfRequirementString() (string, error)
+```
+SelfRequirementString returns the running binary's own designated code
+signing requirement, in the same requirement-string language
+VerifyPeerCodeSignature takes. One use for it: a process can hand its own
+requirement string to a child process it spawns, so that child can verify
+the parent back over the same connection, making the check mutual rather
+than one-directional.
+
+### Func VerifyPeerCodeSignature
+```go
+func VerifyPeerCodeSignature(conn *net.UnixConn, requirement string) error
+```
+VerifyPeerCodeSignature verifies that the process connected via conn, a
+Unix domain socket connection, is a currently valid, unmodified binary
+satisfying requirement: a code signing requirement string in the language
+codesign and Xcode use (see `man csreq`), typically naming a Team ID and/or
+bundle identifier, e.g.
+
+    anchor apple generic and certificate leaf[subject.OU] = "TEAMID" and identifier "ai.onyourbehalf.router-helper"
+
+Filesystem or socket permissions on their own only prove that the
+connecting process is allowed to reach the socket (e.g. membership of the
+same App Group container); they say nothing about which binary is on the
+other end of it. This is the additional check needed to prove that it is
+a specific, currently valid, signed binary, using the same mechanism
+SecCodeCheckValidity applies to the calling process, applied instead to the
+peer of a local socket connection, identified by PeerPID.
+
+There is an unavoidable, narrow race between reading the peer's PID and
+resolving it to a running code object: the peer could in principle exit
+and have its PID recycled by an unrelated process in between. This is the
+same assumption system software on macOS makes when authenticating local
+socket peers this way; the window is on the order of the time between two
+syscalls, not something a connecting process can reliably exploit.
+
+A caller should perform this check immediately after accepting conn and
+before reading or acting on anything it sends, closing conn without further
+use if it returns an error.
 
 
