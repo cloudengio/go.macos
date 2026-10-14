@@ -7,6 +7,10 @@
 package keychain_test
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -81,4 +85,77 @@ func TestPropertiesValidate(t *testing.T) {
 			t.Errorf("%v %+v: %v", tc.typ, tc.props, err)
 		}
 	}
+}
+
+func TestSetProperties(t *testing.T) {
+	service := fmt.Sprintf("cloudeng.io-test-props-%v", t.Name())
+	account := "initial-account"
+	secret := []byte("original-secret-payload")
+
+	kc := keychain.New(keychain.KeychainFileBased, account)
+	_ = kc.DeleteSecureNote(service)
+	if err := kc.WriteSecureNote(service, secret); err != nil {
+		t.Fatalf("failed to write test note: %v", err)
+	}
+
+	currentAccount := account
+	t.Cleanup(func() {
+		cleanupKC := keychain.New(keychain.KeychainFileBased, currentAccount)
+		_ = cleanupKC.DeleteSecureNote(service)
+	})
+
+	re := regexp.MustCompile("^" + regexp.QuoteMeta(service) + "$")
+	props := keychain.Properties{
+		Label:       "updated-label",
+		Description: "updated-description",
+	}
+
+	t.Run("update label and description", func(t *testing.T) {
+		if err := kc.SetProperties(service, props); err != nil {
+			t.Fatalf("SetProperties failed: %v", err)
+		}
+		data, err := kc.ReadSecureNote(service)
+		if err != nil {
+			t.Fatalf("ReadSecureNote failed: %v", err)
+		}
+		if string(data) != string(secret) {
+			t.Errorf("secret data changed: got %q, want %q", data, secret)
+		}
+		attrs, err := kc.Query(keychain.Filter{Service: re})
+		if err != nil {
+			t.Fatalf("Query failed: %v", err)
+		}
+		if len(attrs) != 1 {
+			t.Fatalf("got %d attributes, want 1", len(attrs))
+		}
+		if attrs[0].Label != "updated-label" || attrs[0].Description != "updated-description" {
+			t.Errorf("attributes = %+v", attrs[0])
+		}
+	})
+
+	t.Run("update account", func(t *testing.T) {
+		newAccount := "updated-account"
+		if err := kc.SetProperties(service, keychain.Properties{Account: newAccount}); err != nil {
+			t.Fatalf("SetProperties updating account failed: %v", err)
+		}
+		currentAccount = newAccount
+
+		newKC := keychain.New(keychain.KeychainFileBased, newAccount)
+		attrs, err := newKC.Query(keychain.Filter{Service: re})
+		if err != nil {
+			t.Fatalf("Query with new account failed: %v", err)
+		}
+		if len(attrs) != 1 || attrs[0].Account != newAccount {
+			t.Errorf("attributes with new account = %+v", attrs)
+		}
+	})
+
+	t.Run("invalid arguments", func(t *testing.T) {
+		if err := kc.SetProperties("", props); err == nil {
+			t.Error("SetProperties with empty service expected error, got nil")
+		}
+		if err := kc.SetProperties("nonexistent-service", props); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("SetProperties nonexistent item error = %v, want fs.ErrNotExist", err)
+		}
+	})
 }

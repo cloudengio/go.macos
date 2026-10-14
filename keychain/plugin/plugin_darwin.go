@@ -444,6 +444,13 @@ func (pc Config) queryViaPlugin(ctx context.Context, binary string, spec keychai
 // holding the keychain-access-groups entitlement, which the plugin holds and
 // its caller does not.
 func (pc Config) SetProperties(ctx context.Context, service string, props keychain.Properties) (string, error) {
+	typ := pc.WriteType
+	if typ == 0 {
+		typ = pc.Type
+	}
+	if err := props.Validate(typ); err != nil {
+		return "", err
+	}
 	binary, err := pc.locatePlugin()
 	if err != nil {
 		return "", err

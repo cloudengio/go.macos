@@ -41,8 +41,18 @@ func writeTestNote(t *testing.T, service, account string, data []byte) {
 // handle runs a request through a plugin Server as the plugin binary does,
 // ie. by encoding it, decoding it again and then handling it.
 func handle(t *testing.T, cfg plugin.Config) *plugins.Response {
+	return handleKeyname(t, "query", cfg)
+}
+
+func handleKeyname(t *testing.T, keyname string, cfg plugin.Config) *plugins.Response {
 	t.Helper()
-	req, err := plugin.NewRequest("query", cfg)
+	var req plugins.Request
+	var err error
+	if cfg.Op == plugin.OpSetProperties {
+		req, err = plugins.NewWriteRequest(keyname, nil, cfg)
+	} else {
+		req, err = plugin.NewRequest(keyname, cfg)
+	}
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
@@ -173,5 +183,97 @@ func TestConfigQueryDirect(t *testing.T) {
 	cfg.OnlyUsePlugin = true
 	if _, _, err := cfg.Query(t.Context(), spec); err == nil {
 		t.Error("got nil error, want an error for a missing plugin")
+	}
+}
+
+// TestServerSetProperties verifies that a request with OpSetProperties
+// updates the attributes of the item identified by the keyname.
+func TestServerSetProperties(t *testing.T) {
+	service := fmt.Sprintf("cloudeng.io-test-plugin-props-%v", t.Name())
+	account := "plugin-props-account"
+	const contents = "plugin-props-contents"
+	writeTestNote(t, service, account, []byte(contents))
+
+	// Update label and description.
+	resp := handleKeyname(t, service, plugin.Config{
+		Type:    keychain.KeychainFileBased,
+		Op:      plugin.OpSetProperties,
+		Account: account,
+		Properties: keychain.Properties{
+			Label:       "new-plugin-label",
+			Description: "new-plugin-desc",
+		},
+	})
+	if resp.Error != nil {
+		t.Fatalf("set-properties: %v", resp.Error)
+	}
+
+	// Verify the changes via a query.
+	queryResp := handle(t, plugin.Config{
+		Type: keychain.KeychainFileBased,
+		Op:   plugin.OpQuery,
+		QueryFilter: keychain.FilterSpec{
+			Service: "^" + service + "$",
+		},
+	})
+	if queryResp.Error != nil {
+		t.Fatalf("query: %v", queryResp.Error)
+	}
+	var attrs []keychain.Attributes
+	if err := json.Unmarshal(queryResp.Contents, &attrs); err != nil {
+		t.Fatalf("unmarshaling %q: %v", queryResp.Contents, err)
+	}
+	if got, want := len(attrs), 1; got != want {
+		t.Fatalf("got %v items, want %v", got, want)
+	}
+	if got, want := attrs[0].Label, "new-plugin-label"; got != want {
+		t.Errorf("label = %q, want %q", got, want)
+	}
+	if got, want := attrs[0].Description, "new-plugin-desc"; got != want {
+		t.Errorf("description = %q, want %q", got, want)
+	}
+
+	// Updating a nonexistent item reports key not found.
+	resp = handleKeyname(t, "nonexistent-item", plugin.Config{
+		Type:       keychain.KeychainFileBased,
+		Op:         plugin.OpSetProperties,
+		Account:    account,
+		Properties: keychain.Properties{Label: "foo"},
+	})
+	if resp.Error == nil {
+		t.Fatal("expected error updating nonexistent item, got nil")
+	}
+	if got, want := resp.Error.Message, "key not found"; !strings.Contains(got, want) {
+		t.Errorf("got %q, want it to contain %q", got, want)
+	}
+}
+
+// TestConfigSetPropertiesDirect verifies that Config.SetProperties validates
+// properties client-side and can modify items in-process without a plugin.
+func TestConfigSetPropertiesDirect(t *testing.T) {
+	service := fmt.Sprintf("cloudeng.io-test-plugin-props-direct-%v", t.Name())
+	account := "direct-props-account"
+	writeTestNote(t, service, account, []byte("direct-contents"))
+
+	cfg := plugin.Config{
+		Binary:               "/nonexistent/cloudeng-keychain-plugin",
+		KeychainBundle:       "/nonexistent/cloudeng-keychain.app",
+		KeychainPluginBundle: "/nonexistent/cloudeng-keychain-plugin.app",
+		Type:                 keychain.KeychainFileBased,
+		Account:              account,
+	}
+
+	// Client-side validation: empty properties fail before plugin lookup.
+	if _, err := cfg.SetProperties(t.Context(), service, keychain.Properties{}); err == nil {
+		t.Error("expected error for empty properties, got nil")
+	}
+
+	// Direct in-process property update.
+	binary, err := cfg.SetProperties(t.Context(), service, keychain.Properties{Label: "direct-set-label"})
+	if err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+	if len(binary) != 0 {
+		t.Errorf("plugin binary = %q, want empty for direct update", binary)
 	}
 }

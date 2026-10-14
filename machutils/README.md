@@ -48,8 +48,16 @@ be retrieved from the kernel.
 ErrFailedToRetrievePeerPID = errors.New("failed to retrieve peer process ID from the kernel")
 
 ```
-ErrFailedToRetrievePeerPID is returned when the process ID of the peer of
-a Unix domain socket connection cannot be retrieved from the kernel.
+ErrFailedToRetrievePeerPID is returned when the process ID of the peer of a
+Unix domain socket connection cannot be retrieved from the kernel.
+
+### ErrInvalidRequirement
+```go
+ErrInvalidRequirement = errors.New("invalid code signing requirement")
+
+```
+ErrInvalidRequirement is returned when a code signing requirement string
+cannot be compiled, e.g. because of a syntax error or invalid encoding.
 
 ### ErrNoSelfRequirement
 ```go
@@ -65,9 +73,9 @@ typically because it is unsigned.
 ErrPeerCodeSignatureInvalid = errors.New("peer code signature is not valid or does not satisfy the requirement")
 
 ```
-ErrPeerCodeSignatureInvalid is returned by VerifyPeerCodeSignature when the
-peer either cannot be identified, is no longer running, or does not satisfy
-the given requirement.
+ErrPeerCodeSignatureInvalid is returned by VerifyPeerCodeSignature or
+Requirement.Verify when the peer either cannot be identified, is no longer
+running, or does not satisfy the given requirement.
 
 
 
@@ -160,9 +168,9 @@ func PeerPID(conn *net.UnixConn) (int32, error)
 ```
 PeerPID returns the process ID of the process on the other end of conn,
 a Unix domain socket connection, via the LOCAL_PEEREPID socket option:
-a public, documented macOS extension to getsockopt (see unix(4)), unlike
-the csops interface the rest of this package otherwise resorts to, so no
-cgo is needed here.
+a public, documented macOS extension to getsockopt (see unix(4)), unlike the
+csops interface the rest of this package otherwise resorts to, so no cgo is
+needed here.
 
 The PID alone proves nothing about which binary is running as that process;
 pair it with VerifyPeerCodeSignature to check that.
@@ -171,8 +179,8 @@ pair it with VerifyPeerCodeSignature to check that.
 ```go
 func SelfRequirementString() (string, error)
 ```
-SelfRequirementString returns the running binary's own designated code
-signing requirement, in the same requirement-string language
+SelfRequirementString returns the running binary's own designated
+code signing requirement, in the same requirement-string language
 VerifyPeerCodeSignature takes. One use for it: a process can hand its own
 requirement string to a child process it spawns, so that child can verify
 the parent back over the same connection, making the check mutual rather
@@ -182,8 +190,8 @@ than one-directional.
 ```go
 func VerifyPeerCodeSignature(conn *net.UnixConn, requirement string) error
 ```
-VerifyPeerCodeSignature verifies that the process connected via conn, a
-Unix domain socket connection, is a currently valid, unmodified binary
+VerifyPeerCodeSignature verifies that the process connected via conn,
+a Unix domain socket connection, is a currently valid, unmodified binary
 satisfying requirement: a code signing requirement string in the language
 codesign and Xcode use (see `man csreq`), typically naming a Team ID and/or
 bundle identifier, e.g.
@@ -193,20 +201,66 @@ bundle identifier, e.g.
 Filesystem or socket permissions on their own only prove that the
 connecting process is allowed to reach the socket (e.g. membership of the
 same App Group container); they say nothing about which binary is on the
-other end of it. This is the additional check needed to prove that it is
-a specific, currently valid, signed binary, using the same mechanism
+other end of it. This is the additional check needed to prove that it
+is a specific, currently valid, signed binary, using the same mechanism
 SecCodeCheckValidity applies to the calling process, applied instead to the
-peer of a local socket connection, identified by PeerPID.
+peer of a local socket connection.
 
-There is an unavoidable, narrow race between reading the peer's PID and
-resolving it to a running code object: the peer could in principle exit
-and have its PID recycled by an unrelated process in between. This is the
-same assumption system software on macOS makes when authenticating local
-socket peers this way; the window is on the order of the time between two
-syscalls, not something a connecting process can reliably exploit.
+On modern macOS systems, peer verification retrieves the peer's kernel
+audit token (via LOCAL_PEERTOKEN), which includes the task generation ID
+(pidversion). This binds verification directly to the connecting process
+instance, eliminating the PID recycling race condition. If audit tokens are
+unavailable, verification falls back to the peer PID.
 
 A caller should perform this check immediately after accepting conn and
 before reading or acting on anything it sends, closing conn without further
 use if it returns an error.
+
+
+
+## Types
+### Type Requirement
+```go
+type Requirement struct {
+	// contains filtered or unexported fields
+}
+```
+Requirement represents a compiled macOS code signing requirement. It can be
+safely reused across multiple connections for efficient verification.
+
+### Functions
+
+```go
+func NewRequirement(requirement string) (*Requirement, error)
+```
+NewRequirement parses and compiles a code signing requirement string.
+It returns ErrInvalidRequirement if the requirement string is invalid.
+
+
+
+### Methods
+
+```go
+func (r *Requirement) Close()
+```
+Close releases the underlying SecRequirementRef.
+
+
+```go
+func (r *Requirement) String() string
+```
+String returns the requirement string from which r was compiled.
+
+
+```go
+func (r *Requirement) Verify(conn *net.UnixConn) error
+```
+Verify verifies that the process connected via conn satisfies this
+requirement.
+
+
+
+
+
 
 

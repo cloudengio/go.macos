@@ -79,6 +79,10 @@ type FilterSpec struct {
 	SecureNotesOnly bool   `json:"secure_notes_only,omitempty" yaml:"secure_notes_only,omitempty"`
 }
 
+// MaxRegexpLength is the maximum allowed length in bytes for a regular
+// expression pattern in a FilterSpec.
+const MaxRegexpLength = 2048
+
 // Compile compiles the spec's regular expressions into a Filter. An
 // expression that cannot be compiled is reported as an error that names the
 // attribute it applies to, ie. one of any, service, account, label,
@@ -102,6 +106,9 @@ func (s FilterSpec) Compile() (Filter, error) {
 		if len(c.expr) == 0 {
 			continue
 		}
+		if len(c.expr) > MaxRegexpLength {
+			return Filter{}, fmt.Errorf("%v: regular expression exceeds maximum length of %d bytes", c.attribute, MaxRegexpLength)
+		}
 		re, err := regexp.Compile(c.expr)
 		if err != nil {
 			return Filter{}, fmt.Errorf("%v: invalid regular expression %q: %w", c.attribute, c.expr, err)
@@ -111,34 +118,32 @@ func (s FilterSpec) Compile() (Filter, error) {
 	return filter, nil
 }
 
+func matchAttribute(re *regexp.Regexp, val string) bool {
+	return re == nil || re.MatchString(val)
+}
+
+func (f Filter) matchAny(attrs Attributes) bool {
+	return f.Any.MatchString(attrs.Service) ||
+		f.Any.MatchString(attrs.Account) ||
+		f.Any.MatchString(attrs.Label) ||
+		f.Any.MatchString(attrs.Description) ||
+		f.Any.MatchString(attrs.Comment)
+}
+
 // Matches returns true if attrs satisfies every criterion set in the filter.
 func (f Filter) Matches(attrs Attributes) bool {
 	if f.SecureNotesOnly && !attrs.IsSecureNote() {
 		return false
 	}
-	for _, c := range []struct {
-		re    *regexp.Regexp
-		value string
-	}{
-		{f.Service, attrs.Service},
-		{f.Account, attrs.Account},
-		{f.Label, attrs.Label},
-		{f.Description, attrs.Description},
-		{f.Comment, attrs.Comment},
-	} {
-		if c.re != nil && !c.re.MatchString(c.value) {
-			return false
-		}
+	if !matchAttribute(f.Service, attrs.Service) ||
+		!matchAttribute(f.Account, attrs.Account) ||
+		!matchAttribute(f.Label, attrs.Label) ||
+		!matchAttribute(f.Description, attrs.Description) ||
+		!matchAttribute(f.Comment, attrs.Comment) {
+		return false
 	}
 	if f.Any == nil {
 		return true
 	}
-	for _, v := range []string{
-		attrs.Service, attrs.Account, attrs.Label, attrs.Description, attrs.Comment,
-	} {
-		if f.Any.MatchString(v) {
-			return true
-		}
-	}
-	return false
+	return f.matchAny(attrs)
 }

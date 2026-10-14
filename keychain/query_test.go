@@ -156,6 +156,7 @@ func TestFilterSpecCompile(t *testing.T) {
 		{keychain.FilterSpec{Label: "("}, "label: invalid regular expression"},
 		{keychain.FilterSpec{Description: "("}, "description: invalid regular expression"},
 		{keychain.FilterSpec{Comment: "("}, "comment: invalid regular expression"},
+		{keychain.FilterSpec{Service: strings.Repeat("a", keychain.MaxRegexpLength+1)}, "service: regular expression exceeds maximum length"},
 	} {
 		_, err := tc.spec.Compile()
 		if err == nil {
@@ -165,5 +166,33 @@ func TestFilterSpecCompile(t *testing.T) {
 		if got := err.Error(); !strings.Contains(got, tc.want) {
 			t.Errorf("got %q, want it to contain %q", got, tc.want)
 		}
+	}
+}
+
+func BenchmarkFilterMatches(b *testing.B) {
+	spec := keychain.FilterSpec{
+		Any:         "alice",
+		Service:     "svc",
+		Account:     "acct",
+		Label:       "lbl",
+		Description: "desc",
+		Comment:     "cmt",
+	}
+	filter, err := spec.Compile()
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	attrs := keychain.Attributes{
+		Service:     "svc-foo",
+		Account:     "acct-bar",
+		Label:       "lbl-baz",
+		Description: "desc-qux",
+		Comment:     "cmt-corge",
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = filter.Matches(attrs)
 	}
 }

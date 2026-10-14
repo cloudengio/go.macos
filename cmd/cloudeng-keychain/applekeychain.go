@@ -221,6 +221,17 @@ func writeAttributes(out io.Writer, attrs []keychain.Attributes, format string, 
 	return writeAttributeTable(out, attrs)
 }
 
+// sanitizeTableField replaces newlines, carriage returns, and tabs with spaces
+// so that multiline or control characters in item attributes do not distort
+// tabular column alignment.
+func sanitizeTableField(s string) string {
+	if !strings.ContainsAny(s, "\t\r\n") {
+		return s
+	}
+	r := strings.NewReplacer("\r", " ", "\n", " ", "\t", " ")
+	return r.Replace(s)
+}
+
 // writeAttributeTable writes one item per line. Nothing at all is written if
 // there are no items to display so that the output remains easy to consume
 // from a script.
@@ -232,8 +243,14 @@ func writeAttributeTable(out io.Writer, attrs []keychain.Attributes) error {
 	fmt.Fprintln(tw, "KEYCHAIN\tSERVICE\tACCOUNT\tLABEL\tDESCRIPTION\tACCESSIBILITY\tCREATED\tMODIFIED")
 	for _, a := range attrs {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			a.Keychain, a.Service, a.Account, a.Label, a.Description,
-			a.Accessibility, formatTime(a.Created), formatTime(a.Modified))
+			a.Keychain,
+			sanitizeTableField(a.Service),
+			sanitizeTableField(a.Account),
+			sanitizeTableField(a.Label),
+			sanitizeTableField(a.Description),
+			sanitizeTableField(a.Accessibility),
+			formatTime(a.Created),
+			formatTime(a.Modified))
 	}
 	return tw.Flush()
 }

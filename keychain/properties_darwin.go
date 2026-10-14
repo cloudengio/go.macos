@@ -7,6 +7,7 @@
 package keychain
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 
@@ -64,6 +65,9 @@ func (kc T) SetProperties(service string, props Properties) error {
 	if kc.readonlyUpdate {
 		return fmt.Errorf("cannot write to readonly keychain, but update in place is enabled")
 	}
+	if len(service) == 0 {
+		return fmt.Errorf("missing service name")
+	}
 	typ := kc.writeTypeOrDefault()
 	if err := props.Validate(typ); err != nil {
 		return fmt.Errorf("%v: %w", service, err)
@@ -102,8 +106,14 @@ func (kc T) SetProperties(service string, props Properties) error {
 	query.SetService(service)
 	query.SetAccount(kc.account)
 	if err := keychain.UpdateItem(query, update); err != nil {
-		if err == keychain.ErrorItemNotFound {
+		if errors.Is(err, keychain.ErrorItemNotFound) {
 			return fs.ErrNotExist
+		}
+		if errors.Is(err, keychain.ErrorDuplicateItem) {
+			if len(kc.account) == 0 {
+				return fmt.Errorf("multiple items match service %q: specify an account with --keychain-account to disambiguate: %w", service, err)
+			}
+			return fmt.Errorf("cannot update item: an item with service %q and account %q already exists: %w", service, props.Account, err)
 		}
 		return err
 	}

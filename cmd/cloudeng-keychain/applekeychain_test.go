@@ -378,3 +378,114 @@ func TestAppleKeychainQueryDirect(t *testing.T) {
 	}
 	wantContains(t, string(stderr), "keychain-access-groups")
 }
+
+// TestAppleKeychainSetProperty verifies that 'apple-keychain set-property'
+// modifies item attributes in the keychain.
+func TestAppleKeychainSetProperty(t *testing.T) {
+	ctx := context.Background()
+	service := fmt.Sprintf("cloudeng.io-test-cli-props-%v", t.Name())
+	account := "props-account"
+	const contents = "props-note-contents"
+	writeTestNote(t, service, account, []byte(contents))
+
+	currentAccount := account
+	t.Cleanup(func() {
+		cleanupKC := keychain.New(keychain.KeychainFileBased, currentAccount)
+		_ = cleanupKC.DeleteSecureNote(service)
+	})
+
+	// 1. Update label and description.
+	setArgs := []string{
+		"apple-keychain", "set-property",
+		"--keychain-type=file",
+		"--keychain-direct",
+		"--keychain-account=" + account,
+		"--set-label=cli-updated-label",
+		"--set-description=cli-updated-desc",
+		service,
+	}
+	if err := runCLI(ctx, setArgs...); err != nil {
+		t.Fatalf("set-property failed: %v", err)
+	}
+
+	// Verify attributes via query.
+	anchored := "--service=^" + regexp.QuoteMeta(service) + "$"
+	out := mustQueryCLIWithFlags(ctx, t, "--keychain-direct", "--keychain-type=file", "--format=json", anchored)
+	var attrs []keychain.Attributes
+	if err := json.Unmarshal([]byte(out), &attrs); err != nil {
+		t.Fatalf("unmarshaling %q: %v", out, err)
+	}
+	if got, want := len(attrs), 1; got != want {
+		t.Fatalf("got %v items, want %v", got, want)
+	}
+	if got, want := attrs[0].Label, "cli-updated-label"; got != want {
+		t.Errorf("label = %q, want %q", got, want)
+	}
+	if got, want := attrs[0].Description, "cli-updated-desc"; got != want {
+		t.Errorf("description = %q, want %q", got, want)
+	}
+
+	// 2. Update account.
+	newAccount := "props-new-account"
+	setAcctArgs := []string{
+		"apple-keychain", "set-property",
+		"--keychain-type=file",
+		"--keychain-direct",
+		"--keychain-account=" + account,
+		"--set-account=" + newAccount,
+		service,
+	}
+	if err := runCLI(ctx, setAcctArgs...); err != nil {
+		t.Fatalf("set-property account update failed: %v", err)
+	}
+	currentAccount = newAccount
+
+	// Verify new account via query.
+	out = mustQueryCLIWithFlags(ctx, t, "--keychain-direct", "--keychain-type=file", "--format=json", anchored)
+	attrs = nil
+	if err := json.Unmarshal([]byte(out), &attrs); err != nil {
+		t.Fatalf("unmarshaling %q: %v", out, err)
+	}
+	if got, want := len(attrs), 1; got != want {
+		t.Fatalf("got %v items, want %v", got, want)
+	}
+	if got, want := attrs[0].Account, newAccount; got != want {
+		t.Errorf("account = %q, want %q", got, want)
+	}
+
+	// Revert account back to original so writeTestNote cleanup succeeds.
+	revertArgs := []string{
+		"apple-keychain", "set-property",
+		"--keychain-type=file",
+		"--keychain-direct",
+		"--keychain-account=" + newAccount,
+		"--set-account=" + account,
+		service,
+	}
+	if err := runCLI(ctx, revertArgs...); err != nil {
+		t.Fatalf("set-property account revert failed: %v", err)
+	}
+
+	// 3. Error when nothing to set.
+	emptySet := []string{
+		"apple-keychain", "set-property",
+		"--keychain-type=file",
+		"--keychain-direct",
+		service,
+	}
+	if err := runCLI(ctx, emptySet...); err == nil {
+		t.Error("expected error when nothing to set, got nil")
+	}
+
+	// 4. Error on non-existent item.
+	missingSet := []string{
+		"apple-keychain", "set-property",
+		"--keychain-type=file",
+		"--keychain-direct",
+		"--set-label=foo",
+		"nonexistent-service",
+	}
+	if err := runCLI(ctx, missingSet...); err == nil {
+		t.Error("expected error on nonexistent item, got nil")
+	}
+}
