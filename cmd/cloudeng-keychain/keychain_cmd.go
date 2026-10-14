@@ -67,6 +67,9 @@ commands:
              --set-accessibility: %s
         arguments:
           - <service>
+  - name: describe-options
+    summary: |-
+      list the values accepted by the flags that take one of a fixed set, ie. the keychain types and accessibilities, along with the default that each flag takes when it is not specified
   {{range subcmdExtension "key-info"}}
   {{.}}{{end}}
 `, dummyAccessibility.AllowedValues(), dummyType.AllowedValues(),
@@ -96,6 +99,7 @@ func cli() *subcmd.CommandSetYAML {
 	}
 	cmd.Set("apple-keychain", "query").MustRunner(pluginCmd.QueryAppleKeychain, &AppleKeychainQueryFlags{})
 	cmd.Set("apple-keychain", "set-property").MustRunner(pluginCmd.SetAppleKeychainProperty, &AppleKeychainSetPropertyFlags{})
+	cmd.Set("describe-options").MustRunner(pluginCmd.DescribeOptions, &DescribeOptionsFlags{})
 	cmd.Set("read").MustRunner(pluginCmd.Read, &ReadFlags{})
 	cmd.Set("write").MustRunner(pluginCmd.Write, &WriteFlags{})
 	return cmd
