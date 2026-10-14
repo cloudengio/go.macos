@@ -115,6 +115,10 @@ func ParseType(s string) (Type, error) {
 // WriteType is like Type, except that it does not allow the value 'all'.
 type WriteType int
 
+func (t WriteType) String() string {
+	return flags.Enum[WriteType]{Value: t}.String()
+}
+
 // EnumValues satisfies flags.EnumType[WriteType].
 func (WriteType) EnumValues() map[string]WriteType {
 	return map[string]WriteType{
