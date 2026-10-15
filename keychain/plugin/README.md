@@ -91,6 +91,26 @@ type Config struct {
 	UpdateInPlace        bool                   `yaml:"update_in_place" doc:"set to true to update existing item in place" json:"update_in_place,omitempty"`
 	Accessibility        keychain.Accessibility `yaml:"accessibility,omitempty" doc:"optional accessibility level for the keychain item" json:"accessibility,omitempty"`
 	OnlyUsePlugin        bool                   `yaml:"only_use_plugin" doc:"require the keychain plugin; if false and no plugin binary is found the keychain is accessed directly, in-process" json:"-"`
+
+	// Op is the operation requested of the plugin; its zero value reads or
+	// writes an item's contents. It is set by Query and SetProperties and
+	// acted on by Server.HandleRequest. Op and the two fields below are not
+	// part of the configuration read from a yaml file.
+	Op Op `yaml:"-" json:"op,omitzero"`
+
+	// QueryFilter is the filter for OpQuery. Its zero value matches every
+	// item, which is why Op, rather than this field's presence, is what
+	// selects the operation.
+	QueryFilter keychain.FilterSpec `yaml:"-" json:"query_filter,omitzero"`
+
+	// Properties are the attributes to be changed by OpSetProperties. Its
+	// zero value changes nothing, which SetProperties refuses.
+	Properties keychain.Properties `yaml:"-" json:"properties,omitzero"`
+
+	// Direct requires that the keychain be accessed in-process, ie. that no
+	// plugin be run even when one can be found. It is not part of the
+	// configuration read from a yaml file.
+	Direct bool `yaml:"-" json:"-"`
 }
 ```
 Config represents the configuration for a keychain plugin. It is also used
@@ -128,6 +148,38 @@ that does not exist (fs.ErrNotExist). If OnlyUsePlugin is true, a missing
 plugin is an error, as is any other lookup failure.
 
 
+```go
+func (pc Config) Query(ctx context.Context, spec keychain.FilterSpec) ([]keychain.Attributes, string, error)
+```
+Query returns the attributes of the keychain items that match spec, together
+with the path of the plugin binary that serviced the query, or an empty path
+if the keychain was queried directly, in-process. Item contents are never
+requested and so are never returned.
+
+The plugin binary is located exactly as it is for FS, and a query is
+serviced by the plugin whenever one is found. This matters for more than
+uniformity: the data-protection and iCloud keychains can only be searched by
+a binary that holds the keychain-access-groups entitlement, which the plugin
+holds and its caller does not, so a query of those keychains that is made
+directly finds nothing at all. The items that the plugin writes there belong
+to the plugin's access group and are only visible to the plugin.
+
+
+```go
+func (pc Config) SetProperties(ctx context.Context, service string, props keychain.Properties) (string, error)
+```
+SetProperties changes the attributes of the single keychain item named by
+service, returning the path of the plugin binary that made the change,
+or an empty path if it was made in-process. The item's contents are neither
+read nor written.
+
+The plugin binary is located exactly as it is for FS and Query,
+and the change is made by the plugin whenever one is found: an item in the
+data-protection or iCloud keychain can only be modified by a binary holding
+the keychain-access-groups entitlement, which the plugin holds and its
+caller does not.
+
+
 
 
 ### Type FS
@@ -157,6 +209,50 @@ type KeychainFlags struct {
 ```
 KeychainFlags are commonly required flags for working with the MacOS
 keychain plugin.
+
+### Methods
+
+```go
+func (f KeychainFlags) WriteConfig(typ keychain.WriteType) Config
+```
+WriteConfig returns a Config for modifying the keychain of the requested
+type, for use by a command that changes an item without writing its contents
+and hence has no accessibility of its own to apply. The account is not
+defaulted to the current user as it is by pluginConfig: a command that
+identifies an item by its account must say which account it means.
+
+
+
+
+### Type Op
+```go
+type Op string
+```
+Op names the operation that a request asks of the plugin. It is carried
+explicitly rather than inferred from the presence of the fields that each
+operation needs: those fields cross the wire through encoding/json/v2,
+whose omitempty and omitzero omit a struct that is entirely zero,
+so an operation inferred from such a field would silently become a different
+operation whenever all of its parameters happened to be empty.
+
+### Constants
+### OpAccess, OpQuery, OpSetProperties
+```go
+// OpAccess reads or writes the contents of the item named by the
+// request's keyname, as determined by Request.Write. It is the zero
+// value, so a request that names no operation, including one from a
+// client that predates Op, asks for this.
+OpAccess Op = ""
+// OpQuery searches for the items whose attributes match a filter and
+// returns those attributes.
+OpQuery Op = "query"
+// OpSetProperties changes the attributes of the item named by the
+// request's keyname.
+OpSetProperties Op = "set-properties"
+
+```
+
+
 
 
 ### Type Option

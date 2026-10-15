@@ -2,13 +2,15 @@
 //
 //	provide access to local keychains across multiple operating systems
 //
-//	    read - read an item from the keychain writing to filename, if filename is - the item will be written to stdout. Valid values for flags are as follows:
+//	            read - read an item from the keychain writing to filename, if filename is - the item will be written to stdout. Valid values for flags are as follows:
 //	 --keychain-accessibility: after-first-unlock, after-first-unlock-this-device-only, always, always-this-device-only, default, when-passcode-set-this-device-only, when-unlocked, when-unlocked-this-device-only
 //	 --keychain-type: all, data-protection-local, file, icloud
-//	   write - write an item read from <filename> to the keychain, if filename is - the item will be read from stdin. Valid values for flags are as follows:
+//	           write - write an item read from <filename> to the keychain, if filename is - the item will be read from stdin. Valid values for flags are as follows:
 //	  --keychain-accessibility: after-first-unlock, after-first-unlock-this-device-only, always, always-this-device-only, default, when-passcode-set-this-device-only, when-unlocked, when-unlocked-this-device-only
 //	  --keychain-type: data-protection-local, file, icloud
-//	key-info - manage key info items in a keychain/secrets store, multiple key info items can be stored in a single item. In all cases if input or output is a filename, then "-" or "" will result in stdin or stdout being used as appropriate.
+//	  apple-keychain - access the macOS keychain itself, as opposed to the key-info store held within a single keychain item
+//	describe-options - list the values accepted by the flags that take one of a fixed set, ie. the keychain types and accessibilities, along with the default that each flag takes when it is not specified
+//	        key-info - manage key info items in a keychain/secrets store, multiple key info items can be stored in a single item. In all cases if input or output is a filename, then "-" or "" will result in stdin or stdout being used as appropriate.
 //
 // global flags: [--verbose=false]
 //

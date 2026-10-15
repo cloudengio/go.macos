@@ -50,10 +50,32 @@ commands:
          --keychain-type: %s
     arguments:
       - <filename>
+  - name: apple-keychain
+    summary: |-
+      access the macOS keychain itself, as opposed to the key-info store held within a single keychain item
+    commands:
+      - name: query
+        summary: |-
+          search the keychain for items and display their attributes, but never their contents. The optional <regexp> argument is matched against each of the service, account, label, description and comment attributes, whereas the per-attribute flags each match a single attribute; every criterion supplied must match. The query is run by the keychain plugin when one is found, and in-process otherwise; only the plugin holds the keychain-access-groups entitlement, so items in the data-protection-local and icloud keychains are only visible when the plugin is used. Valid values for flags are as follows:
+             --keychain-type: %s
+        arguments:
+          - "[<regexp>] - optional regular expression matched against any of an item's attributes"
+      - name: set-property
+        summary: |-
+          change the account, accessibility, label or description of a single item, leaving its contents untouched. The item is identified by the <service> argument and by --keychain-account, and at least one of --set-account, --set-label, --set-description or --set-accessibility must be specified. The change is made by the keychain plugin when one is found, and in-process otherwise; only the plugin holds the keychain-access-groups entitlement, so items in the data-protection-local and icloud keychains can only be changed when the plugin is used. Valid values for flags are as follows:
+             --keychain-type: %s
+             --set-accessibility: %s
+        arguments:
+          - <service>
+  - name: describe-options
+    summary: |-
+      list the values accepted by the flags that take one of a fixed set, ie. the keychain types and accessibilities, along with the default that each flag takes when it is not specified
   {{range subcmdExtension "key-info"}}
   {{.}}{{end}}
 `, dummyAccessibility.AllowedValues(), dummyType.AllowedValues(),
-	dummyAccessibility.AllowedValues(), dummyWriteType.AllowedValues())
+	dummyAccessibility.AllowedValues(), dummyWriteType.AllowedValues(),
+	dummyType.AllowedValues(),
+	dummyWriteType.AllowedValues(), dummyAccessibility.AllowedValues())
 
 func cli() *subcmd.CommandSetYAML {
 	var pluginCmd pluginCmd
@@ -75,6 +97,9 @@ func cli() *subcmd.CommandSetYAML {
 	if err := cmd.AddExtensions(); err != nil {
 		panic(fmt.Errorf("failed to add extensions: %w", err))
 	}
+	cmd.Set("apple-keychain", "query").MustRunner(pluginCmd.QueryAppleKeychain, &AppleKeychainQueryFlags{})
+	cmd.Set("apple-keychain", "set-property").MustRunner(pluginCmd.SetAppleKeychainProperty, &AppleKeychainSetPropertyFlags{})
+	cmd.Set("describe-options").MustRunner(pluginCmd.DescribeOptions, &DescribeOptionsFlags{})
 	cmd.Set("read").MustRunner(pluginCmd.Read, &ReadFlags{})
 	cmd.Set("write").MustRunner(pluginCmd.Write, &WriteFlags{})
 	return cmd

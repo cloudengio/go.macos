@@ -8,6 +8,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -182,6 +183,23 @@ func (f KeychainFlags) pluginConfig() Config {
 	}
 }
 
+// WriteConfig returns a Config for modifying the keychain of the requested
+// type, for use by a command that changes an item without writing its
+// contents and hence has no accessibility of its own to apply. The account
+// is not defaulted to the current user as it is by pluginConfig: a command
+// that identifies an item by its account must say which account it means.
+func (f KeychainFlags) WriteConfig(typ keychain.WriteType) Config {
+	return Config{
+		Binary:               f.Binary,
+		KeychainBundle:       f.KeychainBundle,
+		KeychainPluginBundle: f.KeychainPluginBundle,
+		OnlyUsePlugin:        f.OnlyUsePlugin,
+		Account:              f.Account,
+		Type:                 keychain.Type(typ),
+		WriteType:            keychain.Type(typ),
+	}
+}
+
 func (f ReadFlags) Config() (Config, error) {
 	c := f.pluginConfig()
 	c.Type = f.Type.Value
@@ -217,6 +235,30 @@ func DefaultConfigForReadWrite() Config {
 	return cfg
 }
 
+// Op names the operation that a request asks of the plugin. It is carried
+// explicitly rather than inferred from the presence of the fields that each
+// operation needs: those fields cross the wire through encoding/json/v2,
+// whose omitempty and omitzero omit a struct that is entirely zero, so an
+// operation inferred from such a field would silently become a different
+// operation whenever all of its parameters happened to be empty.
+type Op string
+
+const (
+	// OpAccess reads or writes the contents of the item named by the
+	// request's keyname, as determined by Request.Write. It is the zero
+	// value, so a request that names no operation, including one from a
+	// client that predates Op, asks for this.
+	OpAccess Op = ""
+
+	// OpQuery searches for the items whose attributes match a filter and
+	// returns those attributes.
+	OpQuery Op = "query"
+
+	// OpSetProperties changes the attributes of the item named by the
+	// request's keyname.
+	OpSetProperties Op = "set-properties"
+)
+
 // Config represents the configuration for a keychain plugin. It is also
 // used as the PluginSpecific field in plugin requests and responses.
 type Config struct {
@@ -229,6 +271,26 @@ type Config struct {
 	UpdateInPlace        bool                   `yaml:"update_in_place" doc:"set to true to update existing item in place" json:"update_in_place,omitempty"`
 	Accessibility        keychain.Accessibility `yaml:"accessibility,omitempty" doc:"optional accessibility level for the keychain item" json:"accessibility,omitempty"`
 	OnlyUsePlugin        bool                   `yaml:"only_use_plugin" doc:"require the keychain plugin; if false and no plugin binary is found the keychain is accessed directly, in-process" json:"-"`
+
+	// Op is the operation requested of the plugin; its zero value reads or
+	// writes an item's contents. It is set by Query and SetProperties and
+	// acted on by Server.HandleRequest. Op and the two fields below are not
+	// part of the configuration read from a yaml file.
+	Op Op `yaml:"-" json:"op,omitzero"`
+
+	// QueryFilter is the filter for OpQuery. Its zero value matches every
+	// item, which is why Op, rather than this field's presence, is what
+	// selects the operation.
+	QueryFilter keychain.FilterSpec `yaml:"-" json:"query_filter,omitzero"`
+
+	// Properties are the attributes to be changed by OpSetProperties. Its
+	// zero value changes nothing, which SetProperties refuses.
+	Properties keychain.Properties `yaml:"-" json:"properties,omitzero"`
+
+	// Direct requires that the keychain be accessed in-process, ie. that no
+	// plugin be run even when one can be found. It is not part of the
+	// configuration read from a yaml file.
+	Direct bool `yaml:"-" json:"-"`
 }
 
 // FS reads and writes keychain items. It is implemented both by the
@@ -251,29 +313,173 @@ type FS interface {
 // not exist (fs.ErrNotExist). If OnlyUsePlugin is true, a missing plugin is an
 // error, as is any other lookup failure.
 func (pc Config) FS(writable bool) (FS, error) {
+	binary, err := pc.locatePlugin()
+	if err != nil {
+		return nil, err
+	}
+	if len(binary) == 0 {
+		return pc.directFS(), nil
+	}
+	return plugins.NewFS(binary, writable, pc), nil
+}
+
+// locatePlugin returns the plugin binary to use, or an empty string if the
+// keychain is to be accessed directly, in-process, because no plugin binary
+// was found and OnlyUsePlugin is false. See FS for the search and the
+// treatment of errors.
+func (pc Config) locatePlugin() (string, error) {
+	if pc.Direct {
+		if pc.OnlyUsePlugin {
+			return "", fmt.Errorf("cannot access the keychain directly and require the plugin at the same time")
+		}
+		return "", nil
+	}
 	binary, err := LocatePluginBinary(pc.KeychainBundle, pc.KeychainPluginBundle, pc.Binary)
 	if err == nil {
-		return plugins.NewFS(binary, writable, pc), nil
+		return binary, nil
 	}
 	notFound := errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) || errors.Is(err, os.ErrNotExist)
 	if notFound {
 		if binary, ok := BundledPluginApp(pc.Binary); ok {
-			return plugins.NewFS(binary, writable, pc), nil
+			return binary, nil
 		}
 	}
 	if pc.OnlyUsePlugin || !notFound {
-		return nil, err
+		return "", err
 	}
-	return pc.directFS(), nil
+	return "", nil
 }
 
 // directFS returns an FS that accesses the keychain directly, in-process,
 // exactly as the plugin server does when handling a request.
 func (pc Config) directFS() FS {
+	return pc.directKeychain()
+}
+
+// directKeychain returns a keychain that is accessed directly, in-process,
+// exactly as the plugin server does when handling a request.
+func (pc Config) directKeychain() *keychain.T {
 	return keychain.New(pc.Type, pc.Account,
 		keychain.WithUpdateInPlace(pc.UpdateInPlace),
 		keychain.WithAccessibility(pc.Accessibility),
 		keychain.WithWriteType(pc.WriteType))
+}
+
+// queryRequestKeyname is the placeholder keyname used by a query request: a
+// query names no single item, but the protocol's requests always carry a
+// keyname and it appears in the plugin's logs. A plugin that predates query
+// support treats such a request as a read of this name and reports that it
+// does not exist, which Query turns into an error saying that the plugin
+// needs rebuilding.
+const queryRequestKeyname = "query"
+
+// Query returns the attributes of the keychain items that match spec,
+// together with the path of the plugin binary that serviced the query, or an
+// empty path if the keychain was queried directly, in-process. Item contents
+// are never requested and so are never returned.
+//
+// The plugin binary is located exactly as it is for FS, and a query is
+// serviced by the plugin whenever one is found. This matters for more than
+// uniformity: the data-protection and iCloud keychains can only be searched
+// by a binary that holds the keychain-access-groups entitlement, which the
+// plugin holds and its caller does not, so a query of those keychains that
+// is made directly finds nothing at all. The items that the plugin writes
+// there belong to the plugin's access group and are only visible to the
+// plugin.
+func (pc Config) Query(ctx context.Context, spec keychain.FilterSpec) ([]keychain.Attributes, string, error) {
+	filter, err := spec.Compile()
+	if err != nil {
+		return nil, "", err
+	}
+	binary, err := pc.locatePlugin()
+	if err != nil {
+		return nil, "", err
+	}
+	if len(binary) == 0 {
+		attrs, err := pc.directKeychain().Query(filter)
+		return attrs, "", err
+	}
+	attrs, err := pc.queryViaPlugin(ctx, binary, spec)
+	return attrs, binary, err
+}
+
+func (pc Config) queryViaPlugin(ctx context.Context, binary string, spec keychain.FilterSpec) ([]keychain.Attributes, error) {
+	cfg := pc
+	cfg.Op = OpQuery
+	cfg.QueryFilter = spec
+	req, err := plugins.NewRequest(queryRequestKeyname, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create query request: %w", err)
+	}
+	resp, err := plugins.RunExtPlugin(ctx, binary, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != nil {
+		if errors.Is(resp.Error, plugins.ErrKeyNotFound) {
+			// A plugin that predates query support read the request as a
+			// read of queryRequestKeyname.
+			return nil, fmt.Errorf("plugin %v does not support queries, rebuild and reinstall it: %w", binary, resp.Error)
+		}
+		return nil, fmt.Errorf("plugin error: %w", resp.Error)
+	}
+	if len(resp.Contents) == 0 {
+		return nil, nil
+	}
+	var attrs []keychain.Attributes
+	if err := json.Unmarshal(resp.Contents, &attrs); err != nil {
+		return nil, fmt.Errorf("failed to decode the query results from plugin %v: %w", binary, err)
+	}
+	return attrs, nil
+}
+
+// SetProperties changes the attributes of the single keychain item named by
+// service, returning the path of the plugin binary that made the change, or
+// an empty path if it was made in-process. The item's contents are neither
+// read nor written.
+//
+// The plugin binary is located exactly as it is for FS and Query, and the
+// change is made by the plugin whenever one is found: an item in the
+// data-protection or iCloud keychain can only be modified by a binary
+// holding the keychain-access-groups entitlement, which the plugin holds and
+// its caller does not.
+func (pc Config) SetProperties(ctx context.Context, service string, props keychain.Properties) (string, error) {
+	typ := pc.WriteType
+	if typ == 0 {
+		typ = pc.Type
+	}
+	if err := props.Validate(typ); err != nil {
+		return "", err
+	}
+	binary, err := pc.locatePlugin()
+	if err != nil {
+		return "", err
+	}
+	if len(binary) == 0 {
+		return "", pc.directKeychain().SetProperties(service, props)
+	}
+	return binary, pc.setPropertiesViaPlugin(ctx, binary, service, props)
+}
+
+func (pc Config) setPropertiesViaPlugin(ctx context.Context, binary, service string, props keychain.Properties) error {
+	cfg := pc
+	cfg.Op = OpSetProperties
+	cfg.Properties = props
+	req, err := plugins.NewWriteRequest(service, nil, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create set properties request: %w", err)
+	}
+	resp, err := plugins.RunExtPlugin(ctx, binary, req)
+	if err != nil {
+		return err
+	}
+	if resp.Error != nil {
+		if errors.Is(resp.Error, plugins.ErrKeyNotFound) {
+			return fmt.Errorf("plugin %v: %w", binary, resp.Error)
+		}
+		return fmt.Errorf("plugin error: %w", resp.Error)
+	}
+	return nil
 }
 
 // Server provides a plugin for handling plugin requests to access
@@ -337,6 +543,7 @@ func (ps *Server) ReadRequest(ctx context.Context, msgr *jsonmsgs.Messager) (*Co
 		"write_type", cfg.WriteType,
 		"accessibility", cfg.Accessibility.String(),
 		"write", req.Write,
+		"op", string(cfg.Op),
 		"update_in_place", cfg.UpdateInPlace)
 	return &cfg, req, nil
 }
@@ -370,9 +577,58 @@ func (ps *Server) handleRead(ctx context.Context, kc *keychain.T, req plugins.Re
 	return req.NewResponse(data, nil)
 }
 
+// handleQuery services a query request, returning the attributes of the
+// matching items as JSON in the response's contents. Item contents are never
+// read and so are never returned.
+func (ps *Server) handleQuery(ctx context.Context, cfg *Config, req plugins.Request) *plugins.Response {
+	filter, err := cfg.QueryFilter.Compile()
+	if err != nil {
+		return errorResponse(ctx, req, "invalid query filter", err.Error())
+	}
+	attrs, err := keychain.New(cfg.Type, cfg.Account).Query(filter)
+	if err != nil {
+		return errorResponse(ctx, req, "failed to query the keychain", err.Error())
+	}
+	contents, err := json.Marshal(attrs)
+	if err != nil {
+		return errorResponse(ctx, req, "failed to encode the query results", err.Error())
+	}
+	ps.opts.logger.Info("query completed", "id", req.ID, "matched", len(attrs))
+	return req.NewResponse(contents, nil)
+}
+
+// handleSetProperties services a request to change the attributes of the
+// item named by the request's keyname. The item's contents are neither read
+// nor written.
+func (ps *Server) handleSetProperties(ctx context.Context, cfg *Config, req plugins.Request) *plugins.Response {
+	kc := keychain.New(cfg.Type, cfg.Account,
+		keychain.WithUpdateInPlace(cfg.UpdateInPlace),
+		keychain.WithWriteType(cfg.WriteType))
+	if err := kc.SetProperties(req.Keyname, cfg.Properties); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return req.NewResponse(nil, plugins.NewErrorKeyNotFound(req.Keyname))
+		}
+		return errorResponse(ctx, req, "failed to set item properties", err.Error())
+	}
+	ps.opts.logger.Info("set item properties", "id", req.ID, "key", req.Keyname)
+	return req.NewResponse(nil, nil)
+}
+
 // HandleRequest handles the provided plugin request and returns a response.
 // This implements the interaction with the actual OS keychain.
 func (ps *Server) HandleRequest(ctx context.Context, cfg *Config, req plugins.Request) *plugins.Response {
+	switch cfg.Op {
+	case OpQuery:
+		return ps.handleQuery(ctx, cfg, req)
+	case OpSetProperties:
+		return ps.handleSetProperties(ctx, cfg, req)
+	case OpAccess:
+		// Read or write the item's contents, below.
+	default:
+		// An operation this plugin does not implement must be reported as
+		// such, rather than serviced as something else.
+		return errorResponse(ctx, req, "unsupported operation", string(cfg.Op))
+	}
 	if req.Write {
 		kc := keychain.New(cfg.Type, cfg.Account,
 			keychain.WithUpdateInPlace(cfg.UpdateInPlace),
