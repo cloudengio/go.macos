@@ -108,7 +108,7 @@ func (kc T) Query(filter Filter) ([]Attributes, error) {
 	return matched, nil
 }
 
-func (kc T) queryAttributes(typ Type) ([]keychain.QueryResult, error) {
+func (kc T) queryAttributes(typ Type) ([]keychain.AccessibleResult, error) {
 	query := keychain.NewItem()
 	kc.configure(&query, typ)
 	if kc.account != "" {
@@ -119,5 +119,8 @@ func (kc T) queryAttributes(typ Type) ([]keychain.QueryResult, error) {
 	// SetReturnData is deliberately not called: item contents must never be
 	// requested by a query, both to keep them out of the results and so that
 	// the query needs no authorization to access them.
-	return keychain.QueryItem(query)
+	//
+	// QueryItemAccessible, rather than QueryItem, because the accessibility
+	// recorded for an item is one of the attributes reported.
+	return keychain.QueryItemAccessible(query)
 }

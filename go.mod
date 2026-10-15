@@ -3,21 +3,21 @@ module cloudeng.io/macos
 go 1.27.0
 
 require (
-	cloudeng.io/algo v0.0.0-20260925200243-4023f51f1ebd
+	cloudeng.io/algo v0.0.0-20261003213953-73a5dea936b2
 	cloudeng.io/aws v0.0.0-20260925200243-4023f51f1ebd
 	cloudeng.io/cicd v0.0.0-20260909165456-ddaa2de546a0
-	cloudeng.io/cmdutil v0.0.0-20260925200243-4023f51f1ebd
-	cloudeng.io/encoding v0.0.0-20260925200243-4023f51f1ebd
+	cloudeng.io/cmdutil v0.0.0-20261014234730-dfa367957291
+	cloudeng.io/encoding v0.0.0-20261014234730-dfa367957291
 	cloudeng.io/errors v0.0.14-0.20260312171538-61fcde6ce278
 	cloudeng.io/file v0.0.0-20260925200243-4023f51f1ebd
 	cloudeng.io/linux v0.0.0-20251206055912-df09039c8e99
-	cloudeng.io/logging v0.0.0-20260925200243-4023f51f1ebd
-	cloudeng.io/os v0.0.0-20260925200243-4023f51f1ebd
-	cloudeng.io/security v0.0.0-20260925200243-4023f51f1ebd
+	cloudeng.io/logging v0.0.0-20261014234730-dfa367957291
+	cloudeng.io/os v0.0.0-20261003213953-73a5dea936b2
+	cloudeng.io/security v0.0.0-20261014234730-dfa367957291
 	cloudeng.io/text v0.0.16-0.20260624171915-da98fe9dec2b
 	cloudeng.io/vms v0.0.0-20260925200243-4023f51f1ebd
 	github.com/aws/smithy-go v1.28.5
-	github.com/cloudengio/go-keychain v0.0.0-20251120230617-c4053f60cda7
+	github.com/cloudengio/go-keychain v0.0.0-20261014235732-bd9bcf9f8cd6
 	github.com/cloudengio/keyctl v0.0.0-20251205212509-b187ca61e8c2
 	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -27,7 +27,7 @@ require (
 require (
 	cloudeng.io/sync v0.0.12-0.20260804222138-e9281ed260ba // indirect
 	cloudeng.io/sys v0.0.0-20260925200243-4023f51f1ebd // indirect
-	cloudeng.io/types v0.0.0-20260925200243-4023f51f1ebd // indirect
+	cloudeng.io/types v0.0.0-20261013210535-65e6668443d5 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20261006220739-8c912ac31dd4 // indirect
 	github.com/Microsoft/go-winio v0.6.3 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.3 // indirect
