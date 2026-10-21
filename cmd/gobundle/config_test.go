@@ -24,11 +24,16 @@ func newConfigFile(t *testing.T, dir, name, data string) string {
 	return path
 }
 
+// loadConfig loads the configuration the way main does, ie. including the
+// environment variables file that variable references are expanded from.
 func loadConfig(t *testing.T, sharedFile, appFile, binary string) gobundleconfig.T {
 	t.Helper()
-	files := gobundleconfig.LocateConfigFiles(sharedFile, appFile)
+	files, expand, err := gobundleconfig.LocateConfigFiles(sharedFile, appFile, "")
+	if err != nil {
+		t.Fatalf("failed to locate config files: %v", err)
+	}
 	var cfg gobundleconfig.T
-	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(os.Getenv))
+	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(expand))
 	if err := parser.ParseFiles(t.Context(), &cfg, files...); err != nil {
 		t.Fatalf("failed to parse files %v: %v", files, err)
 	}
@@ -279,5 +284,69 @@ func TestCreateAndSignNotarizeValidation(t *testing.T) {
 	err = b.createAndSign(ctx, "testbin", true)
 	if err == nil || !strings.Contains(err.Error(), "no notarization credentials are configured") {
 		t.Errorf("expected unconfigured notary error, got: %v", err)
+	}
+}
+
+// TestExpandEnvFromEnvFile verifies that variable references in the
+// configuration files are expanded from the environment variables file, and
+// that the shell environment overrides the values it defines.
+func TestExpandEnvFromEnvFile(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// IDENTITY and TEAM_ID come from the file; PROFILE is defined by both
+	// and so must come from the shell.
+	newConfigFile(t, tmpDir, "gobundle-env.env", `
+export IDENTITY="Developer ID Application: Example Inc (TEAM123)"
+TEAM_ID=TEAM123 # the team the identity belongs to
+PROFILE=file-profile
+`)
+	// The identity is quoted because expansion is textual: the value
+	// contains a colon, which would otherwise not be valid YAML once
+	// substituted.
+	newConfigFile(t, tmpDir, "gobundle-shared.yaml", `
+identity: "${IDENTITY}"
+profile: ${PROFILE}
+`)
+	newConfigFile(t, tmpDir, "gobundle-app.yaml", `
+info.plist:
+  CFBundleIdentifier: ${TEAM_ID}.com.example.app
+`)
+
+	t.Setenv("PROFILE", "shell-profile")
+
+	cfg := loadConfig(t, "", "", "binary")
+	if got, want := cfg.Identity, "Developer ID Application: Example Inc (TEAM123)"; got != want {
+		t.Errorf("Identity = %q, want %q", got, want)
+	}
+	if got, want := cfg.Info.CFBundleIdentifier, "TEAM123.com.example.app"; got != want {
+		t.Errorf("CFBundleIdentifier = %q, want %q", got, want)
+	}
+	if got, want := cfg.ProvisioningProfile, "shell-profile"; got != want {
+		t.Errorf("ProvisioningProfile = %q, want %q: the shell must override the environment variables file", got, want)
+	}
+
+	// Without the file, a reference the shell does not define is left as it
+	// is by the parser rather than being expanded to an empty value.
+	if err := os.Remove(filepath.Join(tmpDir, "gobundle-env.env")); err != nil {
+		t.Fatal(err)
+	}
+	cfg = loadConfig(t, "", "", "binary")
+	if got, want := cfg.Identity, "${IDENTITY}"; got != want {
+		t.Errorf("Identity = %q, want %q", got, want)
+	}
+	if got, want := cfg.ProvisioningProfile, "shell-profile"; got != want {
+		t.Errorf("ProvisioningProfile = %q, want %q", got, want)
 	}
 }

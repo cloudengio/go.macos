@@ -35,6 +35,7 @@ type localFlags struct {
 	ShowConfigAndExit bool   `cmd:"show-config,false,show the configuration and exit"`
 	SharedConfig      string `cmd:"shared-config,,shared configuration file"`
 	AppConfig         string `cmd:"app-config,,application configuration file"`
+	EnvConfig         string `cmd:"env-config,,'file of NAME=VALUE environment variable definitions for use in the configuration files; the shell environment overrides the values it defines'"`
 	Verbose           bool   `cmd:"verbose,false,enable verbose logging"`
 	Notarize          bool   `cmd:"notarize,false,request notarization of the signed bundle"`
 }
@@ -114,10 +115,16 @@ func main() {
 
 	verbose = lf.Verbose
 
-	files := gobundleconfig.LocateConfigFiles(lf.SharedConfig, lf.AppConfig)
+	// Variable references in the configuration files are expanded from the
+	// shell environment first and from the environment variables file for
+	// whatever the shell does not define.
+	files, expand, err := gobundleconfig.LocateConfigFiles(lf.SharedConfig, lf.AppConfig, lf.EnvConfig)
+	if err != nil {
+		exit(1, "error loading environment variables: %v\n", err)
+	}
 
 	var cfg gobundleconfig.T
-	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(os.Getenv))
+	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(expand))
 	if err := parser.ParseFiles(ctx, &cfg, files...); err != nil {
 		exit(1, "error loading config from %s: %v\n", strings.Join(files, ", "), err)
 	}
@@ -133,6 +140,11 @@ func main() {
 
 	if lf.ShowConfigAndExit {
 		fmt.Printf("parsed config files: %v\n", strings.Join(files, ", "))
+		// LocateConfigFiles has already reported any problem with the
+		// environment variables file, so the error can only be nil here.
+		if envFile, _ := gobundleconfig.LocateEnvConfigFile(lf.EnvConfig); len(envFile) > 0 {
+			fmt.Printf("environment variables file: %v\n", envFile)
+		}
 		_ = cmdyaml.WriteConfig(os.Stdout, &cfg)
 		return
 	}
