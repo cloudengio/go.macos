@@ -75,3 +75,7 @@ go.work.sum
 
 .gograph/
 code_review.md
+.agents
+CLAUDE.md
+GEMINI.md
+.mcp.json

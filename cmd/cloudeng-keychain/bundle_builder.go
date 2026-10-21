@@ -35,6 +35,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"cloudeng.io/cmdutil/cmdyaml"
 	"cloudeng.io/cmdutil/flags"
@@ -219,15 +220,31 @@ func buildBundle(ctx context.Context, out string, softlink, install bool, cfg go
 	return nil
 }
 
-// loadPluginConfig reads the plugin's gobundle-app.yml, expands ${ENV}
-// references, and unmarshals the fields the nested bundle needs.
+// loadPluginConfig loads the configuration for the nested plugin bundle
+// exactly as gobundle would load it for that package: the shared
+// configuration file, where there is one, merged with the plugin's own
+// configuration at path, with ${ENV} references expanded from the shell
+// environment and from the environment variables file for whatever the
+// shell does not define. Building the nested bundle from the same
+// configuration, resolved the same way, as building the plugin standalone
+// with gobundle is what keeps the two in step.
 func loadPluginConfig(ctx context.Context, path string) (gobundleconfig.T, error) {
-	var cfg gobundleconfig.T
-	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(os.Getenv))
-	if err := parser.ParseFiles(ctx, &cfg, path); err != nil {
-		return gobundleconfig.T{}, fmt.Errorf("parsing %s: %w", path, err)
+	// The plugin's own configuration is part of the repository, so being
+	// unable to find it means this is being run from the wrong directory
+	// rather than that it is absent; say so, rather than quietly building
+	// the bundle from the shared configuration alone.
+	if _, err := os.Stat(path); err != nil {
+		return gobundleconfig.T{}, fmt.Errorf("plugin configuration %v: %w", path, err)
 	}
-
+	files, expand, err := gobundleconfig.LocateConfigFiles("", path, "")
+	if err != nil {
+		return gobundleconfig.T{}, err
+	}
+	var cfg gobundleconfig.T
+	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(expand))
+	if err := parser.ParseFiles(ctx, &cfg, files...); err != nil {
+		return gobundleconfig.T{}, fmt.Errorf("parsing %v: %w", strings.Join(files, ", "), err)
+	}
 	return cfg, nil
 }
 
