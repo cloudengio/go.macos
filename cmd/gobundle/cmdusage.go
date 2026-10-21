@@ -53,6 +53,9 @@
 //	Environment variables can be used in any string value and are expanded before use.
 //	This makes it possible to hide sensitive information such as a signing identity
 //	from checked in files.
+//	The values they are expanded with come from the shell environment and, for
+//	any variable the shell does not define, from a file of NAME=VALUE
+//	definitions (see the environment variables file below).
 //
 //
 //	To make managing shared configurations easier, two config files of the same
@@ -62,21 +65,43 @@
 //	information in the shared file and app specific information such as the bundle
 //	identifier and the provisioning profile in the app specific file. The merged
 //	file is written to the app bundle as Resources/gobundle.yml.
-//	The shared file is searched for in the following locations:
-//	 1. The file specified by the environment variable GOBUNDLE_SHARED_CONFIG
-//	 2. The current directory for files named: .gobundle-shared.yaml
-//	    or gobundle-shared.yml
-//	 3. The user's home directory for files named: .gobundle-shared.yaml
-//	    or gobundle-shared.yml
 //
-//	The app specific file is searched for in the following locations:
-//	 1. The file specified by the environment variable GOBUNDLE_APP_CONFIG
-//	 2. The current directory for files named: .gobundle-app.yml
-//	    or gobundle-app.yml
-//	 3. The user's home directory for files named: .gobundle-app.yaml
-//	    or gobundle-app.yml
+//	A third file supplies the values that variable references in those two configuration
+//	files are expanded with. It is not YAML: it contains NAME=VALUE definitions in
+//	the style of a .env file, one per line, with optional quoting, 'export' prefixes
+//	and # comments. Its purpose is to keep settings such as a signing identity or
+//	a team identifier in one place, out of the checked in configuration files,
+//	without having to set them in every shell. The shell environment takes precedence
+//	over it, so a definition can be overridden for a single invocation.
+//	Each file is searched for in the following locations, in order:
+//	 1. The file named by its environment variable, ie. GOBUNDLE_SHARED_CONFIG,
+//	    GOBUNDLE_APP_CONFIG or GOBUNDLE_ENV_CONFIG
+//	 2. The current directory
+//	 3. The gobundle directory within the user's configuration directory, ie.
+//	    $HOME/Library/Application Support/gobundle on macOS
+//	 4. $HOME/.config/gobundle
 //
-//	In all cases .yaml may be used instead of .yml.
+//	The names looked for in each directory are, for the shared file,
+//	gobundle-shared.yaml and .gobundle-shared.yaml, and for the app specific
+//	file, gobundle-app.yaml and .gobundle-app.yaml, where .yml may be used
+//	instead of .yaml. The environment variables file is named gobundle-env.env
+//	or .gobundle-env.env, with a .env suffix rather than a yaml one because its
+//	contents are NAME=VALUE definitions.
+//
+//	A name given by one of the environment variables, or by --shared-config,
+//	--app-config or --env-config, replaces the gobundle part of the names above;
+//	an absolute path is used exactly as given.
+//
+//	The environment variables file is optional: if none is specified and
+//	gobundle-env.env is not found, values come from the shell environment alone.
+//	Asking for one by name that is not there, with --env-config or
+//	GOBUNDLE_ENV_CONFIG, is an error rather than being silently ignored.
+//
+//	The environment variables file is named with a .yaml or .yml extension
+//	because that is what the configuration file search looks for, even though
+//	its contents are NAME=VALUE definitions rather than YAML. A file named
+//	otherwise can be used by giving its absolute path to --env-config or
+//	GOBUNDLE_ENV_CONFIG.
 //
 //	In addition, setting GOBUNDLE_VERBOSE to any non-empty value will enable verbose logging.
 //
