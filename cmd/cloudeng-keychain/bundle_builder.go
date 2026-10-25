@@ -35,9 +35,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
-	"cloudeng.io/cmdutil/cmdyaml"
+	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/cmdutil/flags"
 	"cloudeng.io/macos/buildtools"
 	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
@@ -236,14 +235,11 @@ func loadPluginConfig(ctx context.Context, path string) (gobundleconfig.T, error
 	if _, err := os.Stat(path); err != nil {
 		return gobundleconfig.T{}, fmt.Errorf("plugin configuration %v: %w", path, err)
 	}
-	files, expand, err := gobundleconfig.LocateConfigFiles("", path, "")
+	var ff cmdconfig.FilesFlag
+	ff.SetDefaults(gobundleconfig.DefaultConfigFiles()[0], gobundleconfig.DefaultEnvConfigFile)
+	cfg, _, err := gobundleconfig.Load(ctx, &ff, path)
 	if err != nil {
-		return gobundleconfig.T{}, err
-	}
-	var cfg gobundleconfig.T
-	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(expand))
-	if err := parser.ParseFiles(ctx, &cfg, files...); err != nil {
-		return gobundleconfig.T{}, fmt.Errorf("parsing %v: %w", strings.Join(files, ", "), err)
+		return gobundleconfig.T{}, fmt.Errorf("parsing %v: %w", path, err)
 	}
 	return cfg, nil
 }

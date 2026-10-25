@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"cloudeng.io/cmdutil/cmdyaml"
+	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/macos/buildtools"
 	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
@@ -25,17 +25,22 @@ func newConfigFile(t *testing.T, dir, name, data string) string {
 }
 
 // loadConfig loads the configuration the way main does, ie. including the
-// environment variables file that variable references are expanded from.
+// environment variables file that variable references are expanded from. The
+// default files are used if sharedFile and appFile are both empty.
 func loadConfig(t *testing.T, sharedFile, appFile, binary string) gobundleconfig.T {
 	t.Helper()
-	files, expand, err := gobundleconfig.LocateConfigFiles(sharedFile, appFile, "")
-	if err != nil {
-		t.Fatalf("failed to locate config files: %v", err)
+	var ff cmdconfig.FilesFlag
+	ff.SetDefaults(gobundleconfig.DefaultConfigFiles()...)
+	for _, file := range []string{sharedFile, appFile} {
+		if len(file) > 0 {
+			if err := ff.Set(file); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
-	var cfg gobundleconfig.T
-	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(expand))
-	if err := parser.ParseFiles(t.Context(), &cfg, files...); err != nil {
-		t.Fatalf("failed to parse files %v: %v", files, err)
+	cfg, _, err := gobundleconfig.Load(t.Context(), &ff)
+	if err != nil {
+		t.Fatalf("failed to load the config files: %v", err)
 	}
 	if len(binary) > 0 {
 		cfg = cfg.WithDefaultsForBinary(binary)

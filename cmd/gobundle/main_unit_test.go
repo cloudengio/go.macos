@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
@@ -40,7 +41,7 @@ func parseFlagsFor(t *testing.T, args ...string) (string, []string, *flag.FlagSe
 
 func TestParseFlagsNormal(t *testing.T) {
 	execBin, execArgs, cmdFs, lf := parseFlagsFor(t,
-		"gobundle", "--verbose", "--shared-config", "shared.yaml", "build", ".")
+		"gobundle", "--verbose", "--config", "shared.yaml", "build", ".")
 
 	if execBin != "" {
 		t.Errorf("expected empty execBinary, got %q", execBin)
@@ -51,8 +52,12 @@ func TestParseFlagsNormal(t *testing.T) {
 	if !lf.Verbose {
 		t.Error("expected Verbose to be true")
 	}
-	if lf.SharedConfig != "shared.yaml" {
-		t.Errorf("SharedConfig = %q, want shared.yaml", lf.SharedConfig)
+	if got, want := lf.Config.Files(cmdconfig.FileTypeYAML, false), []string{"shared.yaml"}; !slices.Equal(got, want) {
+		t.Errorf("Config = %v, want %v", got, want)
+	}
+	// The default environment variables file is retained.
+	if got, want := lf.Config.Files(cmdconfig.FileTypeEnv, false), []string{gobundleconfig.DefaultEnvConfigFile}; !slices.Equal(got, want) {
+		t.Errorf("env files = %v, want %v", got, want)
 	}
 	if lf.Notarize {
 		t.Error("expected Notarize to be false, it was not given")

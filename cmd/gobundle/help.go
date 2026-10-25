@@ -106,35 +106,33 @@ over it, so a definition can be overridden for a single invocation.
 `
 
 const para6 = ` 
+The files are named by the --config flag, which takes a comma separated
+list, may be repeated, and replaces the defaults. Their type is determined by
+their suffix: .yaml and .yml files are the configuration files, applied in
+the order given, and a .env file is the environment variables file, of which
+at most one is used. The defaults are gobundle-shared.yaml, gobundle-app.yaml
+and gobundle-env.env.
+
 Each file is searched for in the following locations, in order:
- 1. The file named by its environment variable, ie. GOBUNDLE_SHARED_CONFIG,
-    GOBUNDLE_APP_CONFIG or GOBUNDLE_ENV_CONFIG
- 2. The current directory
- 3. The gobundle directory within the user's configuration directory, ie.
+ 1. The current directory
+ 2. The gobundle directory within the user's configuration directory, ie.
     $HOME/Library/Application Support/gobundle on macOS
- 4. $HOME/.config/gobundle
+ 3. $HOME/.config/gobundle
 
-The names looked for in each directory are, for the shared file,
-gobundle-shared.yaml and .gobundle-shared.yaml, and for the app specific
-file, gobundle-app.yaml and .gobundle-app.yaml, where .yml may be used
-instead of .yaml. The environment variables file is named gobundle-env.env
-or .gobundle-env.env, with a .env suffix rather than a yaml one because its
-contents are NAME=VALUE definitions.
+In each directory a name is looked for as it is and with a leading '.', eg.
+gobundle-shared.yaml and .gobundle-shared.yaml, where .yml may be used
+instead of .yaml for a name that has no suffix. An absolute path is used
+exactly as given.
 
-A name given by one of the environment variables, or by --shared-config,
---app-config or --env-config, replaces the gobundle part of the names above;
-an absolute path is used exactly as given.
+If --config does not name any file of a type, the environment variable
+GOBUNDLE_CONFIG, a comma separated list of YAML files, or GOBUNDLE_ENV_CONFIG,
+the environment variables file, is used if it is set, and the defaults
+otherwise.
 
-The environment variables file is optional: if none is specified and
-gobundle-env.env is not found, values come from the shell environment alone.
-Asking for one by name that is not there, with --env-config or
-GOBUNDLE_ENV_CONFIG, is an error rather than being silently ignored.
-
-The environment variables file is named with a .yaml or .yml extension
-because that is what the configuration file search looks for, even though
-its contents are NAME=VALUE definitions rather than YAML. A file named
-otherwise can be used by giving its absolute path to --env-config or
-GOBUNDLE_ENV_CONFIG.
+The defaults are optional: those that are not found are ignored, and if
+there is no environment variables file the values come from the shell
+environment alone. A file that is named, by --config or by an environment
+variable, and is not found is an error rather than being silently ignored.
 
 In addition, setting GOBUNDLE_VERBOSE to any non-empty value will enable verbose logging.
 
