@@ -154,8 +154,7 @@ func runGoBundle(t *testing.T, cmd *exec.Cmd, sharedCfg, appCfg string) string {
 	}
 	cmd.Env = append(cmd.Env,
 		"GOBUNDLE_VERBOSE=yes",
-		"GOBUNDLE_SHARED_CONFIG="+sharedCfg,
-		"GOBUNDLE_APP_CONFIG="+appCfg,
+		"GOBUNDLE_CONFIG="+sharedCfg+","+appCfg,
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

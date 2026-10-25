@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/cmdutil/cmdyaml"
 	"cloudeng.io/cmdutil/flags"
 	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
@@ -31,13 +32,11 @@ func printf(format string, args ...any) {
 }
 
 type localFlags struct {
-	Help              bool   `cmd:"help,false,show a help message"`
-	ShowConfigAndExit bool   `cmd:"show-config,false,show the configuration and exit"`
-	SharedConfig      string `cmd:"shared-config,,shared configuration file"`
-	AppConfig         string `cmd:"app-config,,application configuration file"`
-	EnvConfig         string `cmd:"env-config,,'file of NAME=VALUE environment variable definitions for use in the configuration files; the shell environment overrides the values it defines'"`
-	Verbose           bool   `cmd:"verbose,false,enable verbose logging"`
-	Notarize          bool   `cmd:"notarize,false,request notarization of the signed bundle"`
+	Help              bool                `cmd:"help,false,show a help message"`
+	ShowConfigAndExit bool                `cmd:"show-config,false,show the configuration and exit"`
+	Config            cmdconfig.FilesFlag `cmd:"config,,'comma separated list of YAML configuration files, applied in order, and of one file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults; the shell environment overrides the values the latter defines'"`
+	Verbose           bool                `cmd:"verbose,false,enable verbose logging"`
+	Notarize          bool                `cmd:"notarize,false,request notarization of the signed bundle"`
 }
 
 // signThenRunVerb is a special verb used to indicate that the gobundle command
@@ -97,6 +96,7 @@ func parseGoArgs(args []string) (binary, verb string, verbArgs []string) {
 func createFS() (*flag.FlagSet, *localFlags) {
 	cmdFs := flag.NewFlagSet("gobundle", flag.ContinueOnError)
 	var lf localFlags
+	lf.Config.SetDefaults(gobundleconfig.DefaultConfigFiles()...)
 	if err := flags.RegisterFlagsInStruct(cmdFs, "cmd", &lf, nil, nil); err != nil {
 		panic(err)
 	}
@@ -118,15 +118,9 @@ func main() {
 	// Variable references in the configuration files are expanded from the
 	// shell environment first and from the environment variables file for
 	// whatever the shell does not define.
-	files, expand, err := gobundleconfig.LocateConfigFiles(lf.SharedConfig, lf.AppConfig, lf.EnvConfig)
+	cfg, loc, err := gobundleconfig.Load(ctx, &lf.Config)
 	if err != nil {
-		exit(1, "error loading environment variables: %v\n", err)
-	}
-
-	var cfg gobundleconfig.T
-	parser := cmdyaml.NewParser(cmdyaml.WithStrictFields(true), cmdyaml.WithExpandMapping(expand))
-	if err := parser.ParseFiles(ctx, &cfg, files...); err != nil {
-		exit(1, "error loading config from %s: %v\n", strings.Join(files, ", "), err)
+		exit(1, "error loading the configuration: %v\n", err)
 	}
 
 	binary, goVerb, goVerbArgs := parseGoArgs(cmdFs.Args())
@@ -139,11 +133,9 @@ func main() {
 	}
 
 	if lf.ShowConfigAndExit {
-		fmt.Printf("parsed config files: %v\n", strings.Join(files, ", "))
-		// LocateConfigFiles has already reported any problem with the
-		// environment variables file, so the error can only be nil here.
-		if envFile, _ := gobundleconfig.LocateEnvConfigFile(lf.EnvConfig); len(envFile) > 0 {
-			fmt.Printf("environment variables file: %v\n", envFile)
+		fmt.Printf("parsed config files: %v\n", strings.Join(loc.YAML, ", "))
+		if len(loc.Env) > 0 {
+			fmt.Printf("environment variables file: %v\n", strings.Join(loc.Env, ", "))
 		}
 		_ = cmdyaml.WriteConfig(os.Stdout, &cfg)
 		return
