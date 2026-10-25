@@ -1,0 +1,32 @@
+--- Overview
+Moves gobundle configuration loading onto the shared cloudeng.io/cmdutil/cmdconfig package. The three per-file flags and their environment variables become one --config flag and one GOBUNDLE_CONFIG variable, and the local file lookup and variable expansion code is removed.
+
+--- Key Changes
+gobundle CLI
+  * Usage: gobundle --config=a.yaml,b.yaml,vars.env build .. --config takes a comma-separated list, can be repeated, and replaces the defaults (gobundle-shared.yaml, gobundle-app.yaml, gobundle-env.env).
+  * A file's suffix sets its type: .yaml and .yml files are YAML config, applied in order. A .env file holds NAME=VALUE definitions, and only one is used.
+  * If --config names no file of a type, GOBUNDLE_CONFIG (comma-separated YAML files) or GOBUNDLE_ENV_CONFIG (env file) is used in place of the defaults.
+  * Files are searched for in the current directory, the user config directory's gobundle subdirectory, then $HOME/.config/gobundle.
+  * Default files are optional. A file named by --config or an environment variable that can't be found is an error.
+  * --show-config now reports the files that were actually loaded.
+  * Help text, cmdusage.go and the README are updated to match.
+
+cmd/gobundle/gobundleconfig
+  * Adds Spec (a cmdconfig.Spec), DefaultConfigFiles() and Load(ctx, *cmdconfig.FilesFlag, extra ...string). Load returns the config and the located files.
+  * Removes LocateConfigFiles, LocateEnvConfigFile, EnvVarMapping and the local expansion logic. $VAR expansion is now handled by cmdyaml.LoadFiles.
+  * Tests are rewritten around Load: defaults, explicit files, env vars, the user config dir, env file expansion and precedence, and extra files.
+
+cmd/cloudeng-keychain
+  * loadPluginConfig now uses gobundleconfig.Load, passing the plugin config as an extra required file.
+
+Dependencies
+  * Bumps the cloudeng.io/* modules (including cmdutil for cmdconfig), smithy-go, the AWS SDK v2 modules and go-winio.
+
+--- Breaking Changes
+  * Flags: removes --shared-config, --app-config and --env-config. Use --config instead.
+  * Environment variables: removes GOBUNDLE_SHARED_CONFIG and GOBUNDLE_APP_CONFIG. Use GOBUNDLE_CONFIG instead. GOBUNDLE_ENV_CONFIG is kept.
+  * gobundleconfig API:
+    * Removes LocateConfigFiles, LocateEnvConfigFile, EnvVarMapping, EnvConfigSuffix, SharedBundleEnvVar and AppBundleEnvVar.
+    * DefaultSharedConfigFile, DefaultAppConfigFile and DefaultEnvConfigFile now include their file suffixes.
+
+ Generated with Claude Code (https://claude.com/claude-code)
