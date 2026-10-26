@@ -1,0 +1,53 @@
+--- Overview
+Adds a declarative, YAML-driven buildtools.Bundle model that supports nested sub-bundles, and generates the ordered build, sign and notarize steps from it. gobundle and cloudeng-keychain now use this model, and their config schemas and CommonFlags loading are unified on cmdconfig.
+
+--- Key Changes
+buildtools
+  * New BundleSpec, Bundle and SubBundle types. Sub-bundles nest to any depth under sub_bundles, with paths relative to the parent's Contents directory.
+  * Bundle.Steps(...BuildOption) returns the steps in this order: clean/create, populate (outermost first), sign (innermost first), then notarize if requested.
+    * Options: WithBinary, WithContents, WithNotarize.
+    * Each bundle inherits its signing identity and codesign args from its parent. Entitlements are never inherited.
+    * Icon generation moved into the build steps as appIconStep.
+  * Bundle.Validate checks:
+    * nested paths are relative and stay inside the parent;
+    * bundle identifiers are unique;
+    * unresolved .-prefixed identifiers are rejected;
+    * restricted entitlements come with a provisioning profile;
+    * icon and profile files exist;
+    * notarization has credentials and a Developer ID identity.
+  * New ResolveIdentifier expands .Suffix identifiers. ExtensionConfig.ResolveIdentifier now delegates to it.
+  * New Entitlements.Restricted() detects entitlements that need a profile: keychain-access-groups, com.apple.application-identifier and com.apple.developer.*.
+  * New SafariWebExtension.SubBundle builds a SubBundle for a Safari web extension.
+  * CommonFlags:
+    * ConfigFile is replaced by Config cmdconfig.FilesFlag, which takes a comma-separated list of YAML and .env files.
+    * ParseFile is replaced by Load(ctx, cfg, appDir), which searches the config directories and expands ${NAME} references.
+    * New Apply(*Bundle) applies the --bundle-path and --signer overrides.
+
+cmd/gobundle
+  * gobundleconfig.T now embeds buildtools.Bundle.
+  * createAndSign delegates to Bundle.Steps, and handleIcons is removed.
+  * The config schema is restructured: signing: (identity, codesign-args, entitlements, perfile_entitlements), provisioning_profile:, info_plist:, permissions:, icon:, notary:. Help text, README and the sample YAML are updated to match.
+
+cmd/cloudeng-keychain
+  * The bundle builder now describes the plugin as a nested SubBundle of the client Bundle instead of building the steps by hand.
+  * The plugin's gobundle-app.yml is migrated to the new schema.
+
+Deps
+  * Bumped cloudeng.io/* modules and the indirect AWS SDK dependencies.
+
+--- Breaking Changes
+  * Config YAML schema:
+    * identity, codesign-args and entitlements move under signing:.
+    * profile becomes provisioning_profile.
+    * info.plist becomes info_plist.
+    * The top-level notarize: key is removed; use the --notarize flag instead.
+    * The executable_permissions and macos_dir_permissions aliases are removed; use permissions.executable and permissions.macos_dir.
+  * buildtools API:
+    * Removed: Config, CommonFlags.ConfigFile, CommonFlags.ParseFile, PermissionsConfig.UnmarshalYAML and NotaryConfig.ValidateSigningConfig.
+    * CommonFlags.Load has a new signature.
+  * gobundleconfig:
+    * Spec is now a function, Spec().
+    * In T, the fields move: Identity -> Signing.Identity, and NotaryConfig -> Notary.
+    * The error for missing notary credentials now reads "notarization requires notary credentials...".
+
+ Generated with Claude Code (https://claude.com/claude-code)
