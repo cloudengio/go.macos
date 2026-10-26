@@ -1,6 +1,7 @@
-info.plist:
+info_plist:
   CFBundleIdentifier: ${CLOUDENG_DEVID}.io.cloudeng.example
-profile: "${CLOUDENG_EXAMPLE_PROFILE}"
-entitlements:
-  keychain-access-groups:
-    - ${CLOUDENG_DEVID}.*
+provisioning_profile: "${CLOUDENG_EXAMPLE_PROFILE}"
+signing:
+  entitlements:
+    keychain-access-groups:
+      - ${CLOUDENG_DEVID}.*

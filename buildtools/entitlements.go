@@ -7,6 +7,7 @@ package buildtools
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 	"howett.net/plist"
@@ -41,6 +42,24 @@ func (e PerFileEntitlements) For(path string) (Entitlements, bool) {
 // are specified as YAML.
 type Entitlements struct {
 	raw map[string]any `yaml:",inline"`
+}
+
+// Restricted reports whether the entitlements include any that the system only
+// honours when they are authorized by a provisioning profile embedded in the
+// bundle: keychain access groups, the application and team identifiers, and the
+// com.apple.developer.* capabilities. Entitlements such as
+// com.apple.security.app-sandbox do not need one. It is false for nil.
+func (e *Entitlements) Restricted() bool {
+	if e == nil {
+		return false
+	}
+	for key := range e.raw {
+		if key == "keychain-access-groups" || key == "com.apple.application-identifier" ||
+			strings.HasPrefix(key, "com.apple.developer.") {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Entitlements) UnmarshalYAML(node *yaml.Node) error {

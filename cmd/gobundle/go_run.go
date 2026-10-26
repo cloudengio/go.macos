@@ -50,5 +50,5 @@ func handleGoRunExec(ctx context.Context, cfg gobundleconfig.T, notarize bool, b
 	if err := b.createAndSign(ctx, binary, notarize); err != nil {
 		return fmt.Errorf("error creating and signing bundle: %v", err)
 	}
-	return runCommand(ctx, b.ap.ExecutablePath(), args)
+	return runCommand(ctx, b.cfg.AppBundle().ExecutablePath(), args)
 }

@@ -3,19 +3,19 @@ module cloudeng.io/macos
 go 1.27.0
 
 require (
-	cloudeng.io/algo v0.0.0-20261024235640-5050ffdc866a
-	cloudeng.io/aws v0.0.0-20261024235640-5050ffdc866a
+	cloudeng.io/algo v0.0.0-20261026011012-faf5342e5797
+	cloudeng.io/aws v0.0.0-20261026191912-bcd1dece5d6c
 	cloudeng.io/cicd v0.0.0-20261024235640-5050ffdc866a
-	cloudeng.io/cmdutil v0.0.0-20261024235640-5050ffdc866a
-	cloudeng.io/encoding v0.0.0-20261024235640-5050ffdc866a
+	cloudeng.io/cmdutil v0.0.0-20261026191912-bcd1dece5d6c
+	cloudeng.io/encoding v0.0.0-20261026191912-bcd1dece5d6c
 	cloudeng.io/errors v0.0.14-0.20260312171538-61fcde6ce278
-	cloudeng.io/file v0.0.0-20261024235640-5050ffdc866a
+	cloudeng.io/file v0.0.0-20261026011012-faf5342e5797
 	cloudeng.io/linux v0.0.0-20261023180431-d097b266b2f7
-	cloudeng.io/logging v0.0.0-20261024235640-5050ffdc866a
-	cloudeng.io/os v0.0.0-20261024235640-5050ffdc866a
-	cloudeng.io/security v0.0.0-20261024235640-5050ffdc866a
+	cloudeng.io/logging v0.0.0-20261026011012-faf5342e5797
+	cloudeng.io/os v0.0.0-20261026011012-faf5342e5797
+	cloudeng.io/security v0.0.0-20261026191912-bcd1dece5d6c
 	cloudeng.io/text v0.0.16-0.20260624171915-da98fe9dec2b
-	cloudeng.io/vms v0.0.0-20261024235640-5050ffdc866a
+	cloudeng.io/vms v0.0.0-20261026191912-bcd1dece5d6c
 	github.com/aws/smithy-go v1.28.6
 	github.com/cloudengio/go-keychain v0.0.0-20261014235732-bd9bcf9f8cd6
 	github.com/cloudengio/keyctl v0.0.0-20251205212509-b187ca61e8c2
@@ -26,13 +26,13 @@ require (
 
 require (
 	cloudeng.io/sync v0.0.12-0.20260804222138-e9281ed260ba // indirect
-	cloudeng.io/sys v0.0.0-20261024235640-5050ffdc866a // indirect
-	cloudeng.io/types v0.0.0-20261024235640-5050ffdc866a // indirect
+	cloudeng.io/sys v0.0.0-20261026011012-faf5342e5797 // indirect
+	cloudeng.io/types v0.0.0-20261026011012-faf5342e5797 // indirect
 	github.com/Microsoft/go-winio v0.6.4 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.4 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.23 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.33.10 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.10 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.33.11 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.11 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.7 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.7 // indirect
@@ -46,7 +46,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.79.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.10.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.11.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.5 // indirect

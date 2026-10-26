@@ -29,26 +29,6 @@ DefaultEnvConfigFile = "gobundle-env.env"
 
 
 
-## Variables
-### Spec
-```go
-Spec = cmdconfig.Spec{
-	AppDir: ConfigDir,
-	EnvVars: map[cmdconfig.FileType]string{
-		cmdconfig.FileTypeYAML: ConfigBundleEnvVar,
-		cmdconfig.FileTypeEnv:  EnvBundleEnvVar,
-	},
-	FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv},
-}
-
-```
-Spec specifies how a cmdconfig.FilesFlag is located: the files are
-searched for in ConfigDir, the environment variables ConfigBundleEnvVar and
-EnvBundleEnvVar replace the defaults, and at most one environment variables
-file is used.
-
-
-
 ## Functions
 ### Func DefaultConfigFiles
 ```go
@@ -58,19 +38,22 @@ DefaultConfigFiles are the default configuration files, for use with
 cmdconfig.FilesFlag.SetDefaults: the shared and app specific YAML files,
 in the order they are applied, and the file of environment variables.
 
+### Func Spec
+```go
+func Spec() cmdconfig.Spec
+```
+Spec specifies how a cmdconfig.FilesFlag is located: the files are
+searched for in ConfigDir, the environment variables ConfigBundleEnvVar and
+EnvBundleEnvVar replace the defaults, and at most one environment variables
+file is used.
+
 
 
 ## Types
 ### Type T
 ```go
 type T struct {
-	buildtools.SigningConfig `yaml:",inline"`
-	Permissions              buildtools.PermissionsConfig `yaml:"permissions,omitempty"`
-	Path                     string                       `yaml:"bundle"`
-	Info                     buildtools.InfoPlist         `yaml:"info.plist"`
-	ProvisioningProfile      string                       `yaml:"profile"`
-	Icon                     string                       `yaml:"icon"`
-	buildtools.NotaryConfig  `yaml:"notary"`
+	buildtools.Bundle `yaml:",inline"`
 }
 ```
 T represents the configuration for building a Go application bundle via the
@@ -96,11 +79,11 @@ and those that are defaults and do not exist are omitted. extra, if any,
 are further YAML files, applied last, that must exist. $VAR and ${VAR}
 references in them are expanded from the process environment and, for any
 variable the environment does not define, from the environment variables
-file, see cmdyaml.Load. A file that was specified, on the command line or by
-an environment variable, and is not there is an error: it was asked for by
-name, so silently carrying on without it would hide a typo, or a file that
-is not where it is thought to be, until the bundle turns out to have been
-built with the wrong identity. The defaults are optional.
+file, see cmdconfig.Load. A file that was specified, on the command line or
+by an environment variable, and is not there is an error: it was asked for
+by name, so silently carrying on without it would hide a typo, or a file
+that is not where it is thought to be, until the bundle turns out to have
+been built with the wrong identity. The defaults are optional.
 
 
 

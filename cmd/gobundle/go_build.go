@@ -25,8 +25,8 @@ func handleGoBuild(ctx context.Context, cfg gobundleconfig.T, notarize bool, bin
 	}
 	b := newBundle(cfg)
 
-	if fi, err := os.Stat(b.ap.ExecutablePath()); err == nil && fi.Mode().IsRegular() {
-		if err := os.Remove(b.ap.ExecutablePath()); err != nil && !os.IsNotExist(err) {
+	if fi, err := os.Stat(b.cfg.AppBundle().ExecutablePath()); err == nil && fi.Mode().IsRegular() {
+		if err := os.Remove(b.cfg.AppBundle().ExecutablePath()); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("error removing existing signed binary: %v", err)
 		}
 	}
@@ -44,10 +44,10 @@ func handleGoBuild(ctx context.Context, cfg gobundleconfig.T, notarize bool, bin
 	if err := os.Remove(binary); err != nil {
 		return fmt.Errorf("error removing original binary: %v", err)
 	}
-	if err := os.Symlink(b.ap.ExecutablePath(), binary); err != nil {
+	if err := os.Symlink(b.cfg.AppBundle().ExecutablePath(), binary); err != nil {
 		return fmt.Errorf("error creating symlink to signed binary: %v", err)
 	}
-	printf("Created symlink: %s -> %s\n", binary, b.ap.ExecutablePath())
+	printf("Created symlink: %s -> %s\n", binary, b.cfg.AppBundle().ExecutablePath())
 	return nil
 }
 

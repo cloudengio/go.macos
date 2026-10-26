@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"cloudeng.io/cmdutil/cmdconfig"
+	"cloudeng.io/macos/buildtools"
 	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
@@ -369,32 +370,6 @@ func TestRunCommand(t *testing.T) {
 	}
 }
 
-func TestHandleIcons(t *testing.T) {
-	// 1. Empty icon returns no-op cleanup
-	b := newBundle(gobundleconfig.T{})
-	cleanup, err := b.handleIcons()
-	if err != nil {
-		t.Fatalf("handleIcons for empty icon failed: %v", err)
-	}
-	if cleanup == nil {
-		t.Fatal("expected non-nil cleanup function")
-	}
-	cleanup()
-
-	// 2. With icon specified
-	tmpDir := t.TempDir()
-	iconFile := filepath.Join(tmpDir, "app.png")
-	if err := os.WriteFile(iconFile, []byte("fake-png"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	bWithIcon := newBundle(gobundleconfig.T{Icon: iconFile})
-	cleanupWithIcon, err := bWithIcon.handleIcons()
-	if err != nil {
-		t.Fatalf("handleIcons with icon failed: %v", err)
-	}
-	cleanupWithIcon()
-}
-
 func TestPrintf(t *testing.T) {
 	verboseLog.Reset()
 	verbose = false
@@ -428,7 +403,7 @@ func TestHandleGoBuildDirect(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
 	bin := filepath.Join(tmpDir, "example")
-	cfg := gobundleconfig.T{Path: filepath.Join(tmpDir, "example.app")}.WithDefaultsForBinary(bin)
+	cfg := gobundleconfig.T{Bundle: buildtools.Bundle{Path: filepath.Join(tmpDir, "example.app")}}.WithDefaultsForBinary(bin)
 
 	err := handleGoBuild(ctx, cfg, false, bin, []string{"-o", bin, "./testdata/example.go"})
 	if err != nil {

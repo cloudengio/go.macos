@@ -68,11 +68,6 @@ func (n NotaryConfig) ValidateSigning(signing SigningConfig) error {
 	return nil
 }
 
-// ValidateSigningConfig is an alias for ValidateSigning.
-func (n NotaryConfig) ValidateSigningConfig(signing SigningConfig) error {
-	return n.ValidateSigning(signing)
-}
-
 // Notarize returns the steps that submit the bundle to Apple's notarization
 // service and staple the resulting ticket into it. The bundle must already be
 // signed with a Developer ID identity using the hardened runtime and a secure

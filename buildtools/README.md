@@ -107,6 +107,14 @@ func RegisterFlagsOrDie(f any, fs *flag.FlagSet)
 RegisterFlagsOrDie registers a struct that contains an instance of
 CommonFlags with the provided FlagSet, panicing on error.
 
+### Func ResolveIdentifier
+```go
+func ResolveIdentifier(containingID, id string) string
+```
+ResolveIdentifier returns id, or, if it starts with a '.', containingID
+followed by id: the usual shorthand for "the identifier of the bundle that
+contains this one with a suffix".
+
 ### Func UserLaunchAgentsDir
 ```go
 func UserLaunchAgentsDir() (string, error)
@@ -535,6 +543,154 @@ func (b BrowserType) String() string
 
 
 
+### Type BuildOption
+```go
+type BuildOption func(*buildOptions)
+```
+BuildOption is an option for Bundle.Steps.
+
+The bundles are keyed by their location: the key of the top-level
+bundle is the empty string, and that of a nested bundle is its Path
+relative to the Contents directory of the bundle that contains it,
+preceded by the key of that bundle and its Contents directory
+unless it is the top-level bundle, eg. PlugIns/Example.appex or
+PlugIns/Example.appex/Contents/Frameworks/Lib.framework.
+
+### Functions
+
+```go
+func WithBinary(key, path string) BuildOption
+```
+WithBinary supplies the executable to copy into the bundle with the given
+key. Every bundle must have one.
+
+
+```go
+func WithContents(key string, steps ...Step) BuildOption
+```
+WithContents adds steps that add to the contents of the bundle with the
+given key, eg. resources. They are run after its executable is copied and
+before any bundle is signed.
+
+
+```go
+func WithNotarize(notarize bool) BuildOption
+```
+WithNotarize requests that the signed bundle is notarized, which requires
+notary credentials and a Developer ID signing identity.
+
+
+
+
+### Type Bundle
+```go
+type Bundle struct {
+	BundleSpec `yaml:",inline"`
+	// Path is the location of the application bundle to create.
+	Path string `yaml:"bundle"`
+	// Notary holds the credentials used to notarize the signed bundle with
+	// Apple's notarization service, when that is asked for. Notarizing the
+	// bundle covers the bundles within it.
+	Notary NotaryConfig `yaml:"notary"`
+}
+```
+Bundle is a top-level bundle, which is the one that is launched, notarized
+and distributed:
+
+    bundle: build/example.app
+    info_plist:
+      CFBundleIdentifier: com.example.app
+    signing:
+      identity: "Developer ID Application: Example (TEAMID)"
+    notary:
+      keychain_profile: example-notary
+    sub_bundles:
+      - path: PlugIns/Example.appex
+        info_plist:
+          CFBundleIdentifier: .Extension
+        signing:
+          entitlements:
+            com.apple.security.app-sandbox: true
+
+The CFBundleIdentifier of a bundle that nests others, or one of the nested
+bundles, may start with a '.', in which case it is that of the bundle that
+contains it followed by it, see ResolveIdentifier.
+
+### Methods
+
+```go
+func (b Bundle) AppBundle() AppBundle
+```
+AppBundle returns the bundle described by b.
+
+
+```go
+func (b Bundle) Steps(options ...BuildOption) ([]Step, error)
+```
+Steps returns the steps to build the bundle and the bundles nested in it
+after validating them, in the order that they must be run: the bundle is
+removed and created, and the contents of every bundle are added to it,
+the outermost first, then the bundles are signed, the innermost first,
+so that each is signed once all that it contains is, and finally the bundle
+is notarized, if requested. Everything that changes the contents of a bundle
+precedes signing, which any later change would invalidate.
+
+
+```go
+func (b Bundle) Validate() error
+```
+Validate checks that the bundles are described consistently: the path of
+the bundle is set, the paths of the bundles nested in it are relative to it
+and stay within it, their identifiers are unique, and the bundles that are
+signed with restricted entitlements embed a provisioning profile.
+
+
+
+
+### Type BundleSpec
+```go
+type BundleSpec struct {
+	// Info holds the fields of the bundle's Info.plist.
+	Info InfoPlist `yaml:"info_plist"`
+	// Signing holds the signing identity, arguments and entitlements for the
+	// bundle. The identity and arguments of a bundle that has none are those
+	// of the bundle that contains it. The entitlements are never inherited:
+	// they are specific to each bundle.
+	Signing SigningConfig `yaml:"signing"`
+	// Permissions are the permissions for the executable and for the MacOS
+	// directory of the bundle.
+	Permissions PermissionsConfig `yaml:"permissions,omitempty"`
+	// ProvisioningProfile is the path of the profile to embed in the bundle as
+	// Contents/embedded.provisionprofile. Entitlements that are restricted,
+	// see Entitlements.Restricted, are only authorized by one.
+	ProvisioningProfile string `yaml:"provisioning_profile"`
+	// Icon is the path of the image that the icon of the bundle is created
+	// from. CFBundleIconFile defaults to AppIcon.icns.
+	Icon string `yaml:"icon"`
+	// SubBundles are the bundles nested within this one, in the order that they
+	// are signed.
+	SubBundles []SubBundle `yaml:"sub_bundles"`
+}
+```
+BundleSpec is what a top-level bundle, see Bundle, and the bundles that
+are nested within it, see SubBundle, have in common: how the contents of a
+single bundle are described and signed. It is read from YAML and embedded,
+inline, in each of them:
+
+    info_plist:
+      CFBundleIdentifier: com.example.app
+    signing:
+      entitlements:
+        keychain-access-groups: [TEAMID.com.example.app]
+    permissions:
+      executable: 0755
+    provisioning_profile: example.provisionprofile
+    icon: icon.png
+    sub_bundles: [...]
+
+A SubBundle's own SubBundles are nested within it, to any depth.
+
+
 ### Type CommandRunner
 ```go
 type CommandRunner struct {
@@ -617,13 +773,23 @@ type CommonFlags struct {
 	Release    bool   `subcmd:"swift-release,false,'if set, use swift release build, otherwise debug'"`
 	BundlePath string `subcmd:"bundle-path,'','path for the output bundle, overrides any specified in a config file'"`
 	Signer     string `subcmd:"signer,'','signing identity to use, overrides any specified in a config file'"`
-	ConfigFile string `subcmd:"config,'spec.yaml','path to the build specification yaml file'"`
 	Verbose    bool   `subcmd:"verbose,false,'if set, print verbose output'"`
+	// Config holds the build specification files: YAML files, applied in order,
+	// and a file of NAME=VALUE environment variable definitions (.env) that
+	// ${NAME} references in them are expanded from, see Load.
+	Config cmdconfig.FilesFlag `subcmd:"config,'spec.yaml','comma separated list of the YAML build specification files and of the file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults'"`
+	// contains filtered or unexported fields
 }
 ```
 CommonFlags represents flags commonly used by buildtools command line tools.
 
 ### Methods
+
+```go
+func (f CommonFlags) Apply(cfg *Bundle)
+```
+Apply applies the overrides given by the BundlePath and Signer flags to cfg.
+
 
 ```go
 func (f CommonFlags) CommandRunnerOptions() []CommandRunnerOption
@@ -633,9 +799,14 @@ flags.
 
 
 ```go
-func (f CommonFlags) ParseFile(cfg any) error
+func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdconfig.Located, error)
 ```
-ParseFile parses the specified config file into cfg.
+Load locates the files named by the Config flag, searching for them in the
+current directory and the user's configuration directories for appDir,
+see cmdconfig.SearchPath, and parses the YAML files into cfg, expanding
+${NAME} references from the environment and the environment variables file;
+one that is not defined is replaced by an empty string. Unknown fields are
+ignored. It is an error for there to be no YAML file.
 
 
 ```go
@@ -654,37 +825,6 @@ with a non-zero status if any of the steps failed.
 func (f CommonFlags) StepRunnerOptions() []StepRunnerOption
 ```
 StepRunnerOptions returns options for the StepRunner based on the flags.
-
-
-
-
-### Type Config
-```go
-type Config struct {
-	AppBundle             string               `yaml:"bundle"`
-	Signing               SigningConfig        `yaml:"signing"`
-	Permissions           PermissionsConfig    `yaml:"permissions,omitempty"`
-	ExecutablePermissions cmdtypes.Permissions `yaml:"executable_permissions,omitempty"`
-	MacOSDirPermissions   cmdtypes.Permissions `yaml:"macos_dir_permissions,omitempty"`
-}
-```
-Config represents common configuration options that can be read from a yaml
-config file.
-
-### Methods
-
-```go
-func (c Config) ExecutableMode() fs.FileMode
-```
-ExecutableMode returns the configured executable permissions, checking both
-the nested permissions section and top-level executable_permissions.
-
-
-```go
-func (c Config) MacOSDirMode() fs.FileMode
-```
-MacOSDirMode returns the configured MacOS directory permissions, checking
-both the nested permissions section and top-level macos_dir_permissions.
 
 
 
@@ -715,6 +855,16 @@ func (e Entitlements) MarshalPlist() (any, error)
 ```go
 func (e Entitlements) MarshalYAML() (any, error)
 ```
+
+
+```go
+func (e *Entitlements) Restricted() bool
+```
+Restricted reports whether the entitlements include any that the system
+only honours when they are authorized by a provisioning profile embedded in
+the bundle: keychain access groups, the application and team identifiers,
+and the com.apple.developer.* capabilities. Entitlements such as
+com.apple.security.app-sandbox do not need one. It is false for nil.
 
 
 ```go
@@ -1323,12 +1473,6 @@ present and that the identity is not an Apple Development or Mac Developer
 identity.
 
 
-```go
-func (n NotaryConfig) ValidateSigningConfig(signing SigningConfig) error
-```
-ValidateSigningConfig is an alias for ValidateSigning.
-
-
 
 
 ### Type PerFileEntitlements
@@ -1391,13 +1535,6 @@ ExecutableMode returns the executable file mode, or 0 if not configured.
 func (p PermissionsConfig) MacOSDirMode() fs.FileMode
 ```
 MacOSDirMode returns the MacOS directory file mode, or 0 if not configured.
-
-
-```go
-func (p *PermissionsConfig) UnmarshalYAML(node *yaml.Node) error
-```
-UnmarshalYAML implements yaml.Unmarshaler to accept both "executable" /
-"macos_dir" and "executable_permissions" / "macos_dir_permissions".
 
 
 
@@ -1712,6 +1849,23 @@ manifest.json, are rejected.
 See
 https://developer.apple.com/documentation/safariservices/safari-web-extensions
 
+### Methods
+
+```go
+func (ext SafariWebExtension) SubBundle(containingID string, signing SigningConfig) (SubBundle, error)
+```
+validate reports whether ext describes a Safari web extension that can be
+built, given the identifier of the containing app. SubBundle returns the
+extension as a bundle nested within the application that has the identifier
+containingID, for use in Bundle.SubBundles: at PlugIns/<Name>.appex,
+with the Info.plist that AddSafariWebExtension writes. signing holds the
+entitlements and, if it is to be signed with other than the identity of the
+application, the identity. The executable of the extension is supplied when
+the bundle is built, see WithBinary, and the key of the extension is its
+Path.
+
+
+
 
 ### Type Signer
 ```go
@@ -2014,6 +2168,30 @@ func WithStepVerbose(verbose bool) StepRunnerOption
 WithStepVerbose configures the StepRunner to print each step as it is run,
 including the step that fails, without the timing information that
 WithStepTiming adds.
+
+
+
+
+### Type SubBundle
+```go
+type SubBundle struct {
+	BundleSpec `yaml:",inline"`
+	// Path is the location of the bundle relative to the Contents directory of the
+	// bundle that contains it, eg. PlugIns/Example.appex. It must be relative
+	// and must not leave that directory.
+	Path string `yaml:"path"`
+}
+```
+SubBundle is a bundle that is nested within another, eg. an application
+extension, an XPC service or a helper application.
+
+### Methods
+
+```go
+func (s SubBundle) AppBundle(parent AppBundle) AppBundle
+```
+AppBundle returns the bundle described by s, nested in parent. Its
+identifier is resolved, see ResolveIdentifier.
 
 
 

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 
 	"cloudeng.io/cmdutil/cmdconfig"
-	"cloudeng.io/cmdutil/cmdyaml"
 	"cloudeng.io/macos/buildtools"
 )
 
@@ -19,13 +18,7 @@ import (
 // used to dynamically build a bundle for a Go application via gobundle run
 // or gobundle build.
 type T struct {
-	buildtools.SigningConfig `yaml:",inline"`
-	Permissions              buildtools.PermissionsConfig `yaml:"permissions,omitempty"`
-	Path                     string                       `yaml:"bundle"`
-	Info                     buildtools.InfoPlist         `yaml:"info.plist"`
-	ProvisioningProfile      string                       `yaml:"profile"`
-	Icon                     string                       `yaml:"icon"`
-	buildtools.NotaryConfig  `yaml:"notary"`
+	buildtools.Bundle `yaml:",inline"`
 }
 
 const (
@@ -60,13 +53,15 @@ func DefaultConfigFiles() []string {
 // for in ConfigDir, the environment variables ConfigBundleEnvVar and
 // EnvBundleEnvVar replace the defaults, and at most one environment
 // variables file is used.
-var Spec = cmdconfig.Spec{
-	AppDir: ConfigDir,
-	EnvVars: map[cmdconfig.FileType]string{
-		cmdconfig.FileTypeYAML: ConfigBundleEnvVar,
-		cmdconfig.FileTypeEnv:  EnvBundleEnvVar,
-	},
-	FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv},
+func Spec() cmdconfig.Spec {
+	return cmdconfig.Spec{
+		Path: cmdconfig.SearchPath(ConfigDir),
+		EnvVars: map[cmdconfig.FileType]string{
+			cmdconfig.FileTypeYAML: ConfigBundleEnvVar,
+			cmdconfig.FileTypeEnv:  EnvBundleEnvVar,
+		},
+		FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv},
+	}
 }
 
 // Load returns the configuration for building a Go application bundle via
@@ -82,14 +77,14 @@ var Spec = cmdconfig.Spec{
 // further YAML files, applied last, that must exist. $VAR and ${VAR}
 // references in them are expanded from the process environment and, for any
 // variable the environment does not define, from the environment variables
-// file, see cmdyaml.Load. A file that was specified, on the command line or
+// file, see cmdconfig.Load. A file that was specified, on the command line or
 // by an environment variable, and is not there is an error: it was asked for
 // by name, so silently carrying on without it would hide a typo, or a file
 // that is not where it is thought to be, until the bundle turns out to have
 // been built with the wrong identity. The defaults are optional.
 func Load(ctx context.Context, ff *cmdconfig.FilesFlag, extra ...string) (T, *cmdconfig.Located, error) {
 	var cfg T
-	loc, err := ff.Locate(Spec)
+	loc, err := ff.Locate(Spec())
 	if err != nil {
 		return cfg, nil, err
 	}
@@ -99,7 +94,7 @@ func Load(ctx context.Context, ff *cmdconfig.FilesFlag, extra ...string) (T, *cm
 		}
 		loc.YAML = append(loc.YAML, file)
 	}
-	return cfg, loc, cmdyaml.LoadFiles(ctx, &cfg, loc)
+	return cfg, loc, cmdconfig.LoadFiles(ctx, &cfg, loc)
 }
 
 // WithDefaultsForBinary returns a copy of the configuration with default values set for the

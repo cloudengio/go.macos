@@ -111,51 +111,45 @@ func run(out string, softlink, install, notarize, verbose bool) error {
 }
 
 func buildBundle(ctx context.Context, out string, softlink, install bool, cfg gobundleconfig.T, outerInfo, innerInfo buildtools.InfoPlist, client, plugin string, notarize, verbose bool) error {
-	outer := buildtools.AppBundle{Path: out, Info: outerInfo}
-	inner := buildtools.AppBundle{
-		Path: outer.Contents(nestedDir, pluginExecutable+".app"),
-		Info: innerInfo,
+	// The client is the top-level bundle, signed without entitlements. The
+	// plugin is nested within it, with the entitlements, permissions and
+	// provisioning profile of the plugin's configuration, and is signed with
+	// the identity of the client.
+	nested := buildtools.SubBundle{
+		Path: filepath.Join(nestedDir, pluginExecutable+".app"),
+		BundleSpec: buildtools.BundleSpec{
+			Info: innerInfo,
+			Signing: buildtools.SigningConfig{
+				Entitlements:        cfg.Signing.Entitlements,
+				PerFileEntitlements: cfg.Signing.PerFileEntitlements,
+			},
+			Permissions:         cfg.Permissions,
+			ProvisioningProfile: cfg.ProvisioningProfile,
+		},
 	}
-
-	runner := buildtools.NewRunner(buildtools.WithStepVerbose(verbose))
-	runner.AddSteps(outer.Clean()...)
-	runner.AddSteps(outer.Create()...)
-
-	// Nested plugin bundle: the entitled executable, authorized by its own profile.
-	runner.AddSteps(inner.Create()...)
-	runner.AddSteps(inner.WriteInfoPlist(), inner.CopyExecutable(plugin))
-	if cfg.ProvisioningProfile != "" {
-		runner.AddSteps(inner.InstallProvisioningProfile(cfg.ProvisioningProfile))
+	top := buildtools.Bundle{
+		Path:   out,
+		Notary: cfg.Notary,
+		BundleSpec: buildtools.BundleSpec{
+			Info: outerInfo,
+			Signing: buildtools.SigningConfig{
+				Identity:          cfg.Signing.Identity,
+				CodesignArguments: cfg.Signing.CodesignArguments,
+			},
+			SubBundles: []buildtools.SubBundle{nested},
+		},
 	}
+	outer := top.AppBundle()
+	inner := nested.AppBundle(outer)
 
-	// Outer client app.
-	runner.AddSteps(outer.WriteInfoPlist(), outer.CopyExecutable(client))
-
-	if cfg.Identity != "" {
-		// Sign the nested plugin (with entitlements) fully first, then the client
-		// (no entitlements), then seal the outer bundle.
-		entitled := cfg.Signer()
-		plain := buildtools.NewSigner(cfg.Identity, nil, nil, cfg.CodesignArguments)
-		runner.AddSteps(
-			inner.SignExecutable(entitled),
-			inner.Sign(entitled),
-			outer.SignExecutable(plain),
-			outer.Sign(plain),
-		)
+	steps, err := top.Steps(
+		buildtools.WithNotarize(notarize),
+		buildtools.WithBinary("", client),
+		buildtools.WithBinary(nested.Path, plugin))
+	if err != nil {
+		return fmt.Errorf("%w (configured in %s)", err, pluginConfigYML)
 	}
-
-	if notarize {
-		if cfg.Identity == "" {
-			return fmt.Errorf("-notarize requires a signing identity in %s", pluginConfigYML)
-		}
-		if !cfg.NotaryConfig.Configured() {
-			return fmt.Errorf("-notarize requires a notary section in %s", pluginConfigYML)
-		}
-		runner.AddSteps(outer.Notarize(cfg.NotaryConfig)...)
-	}
-
-	runner.AddSteps(inner.SetExecutablePermissions(plugin, cfg.Permissions.ExecutableMode()))
-	runner.AddSteps(inner.SetMacOSDirPermissions(cfg.Permissions.MacOSDirMode()))
+	runner := buildtools.NewRunner(buildtools.WithStepVerbose(verbose)).AddSteps(steps...)
 
 	link := filepath.Join(filepath.Dir(out), clientExecutable)
 	pluginLink := filepath.Join(filepath.Dir(out), pluginExecutable)

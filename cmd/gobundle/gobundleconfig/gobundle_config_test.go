@@ -15,6 +15,7 @@ import (
 
 	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/cmdutil/cmdyaml"
+	"cloudeng.io/macos/buildtools"
 	"cloudeng.io/macos/cmd/gobundle/gobundleconfig"
 )
 
@@ -71,9 +72,9 @@ func TestWithDefaultsForBinary(t *testing.T) {
 	}
 
 	// 2. Existing Path is preserved
-	cfgWithCustomPath := gobundleconfig.T{
+	cfgWithCustomPath := gobundleconfig.T{Bundle: buildtools.Bundle{
 		Path: "/tmp/custom.app",
-	}
+	}}
 	cfgWithCustomPath = cfgWithCustomPath.WithDefaultsForBinary("/usr/local/bin/sample")
 	if got, want := cfgWithCustomPath.Path, "/tmp/custom.app"; got != want {
 		t.Errorf("custom cfg.Path = %q, want %q", got, want)
@@ -88,11 +89,12 @@ func TestParseConfigYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	sharedData := `
-identity: "Developer ID Application: Company (ABC123XYZ)"
-codesign-args:
-  - "--timestamp"
-entitlements:
-  com.apple.security.app-sandbox: true
+signing:
+  identity: "Developer ID Application: Company (ABC123XYZ)"
+  codesign-args:
+    - "--timestamp"
+  entitlements:
+    com.apple.security.app-sandbox: true
 permissions:
   executable: 0755
   macos_dir: 0750
@@ -101,10 +103,10 @@ notary:
 `
 	appData := `
 bundle: /tmp/output.app
-info.plist:
+info_plist:
   CFBundleIdentifier: com.company.sample
   CFBundleDisplayName: Sample App
-profile: /path/to/profile.mobileprovision
+provisioning_profile: /path/to/profile.mobileprovision
 icon: /path/to/icon.png
 `
 
@@ -117,10 +119,10 @@ icon: /path/to/icon.png
 		t.Fatalf("ParseFiles failed: %v", err)
 	}
 
-	if got, want := cfg.Identity, "Developer ID Application: Company (ABC123XYZ)"; got != want {
+	if got, want := cfg.Signing.Identity, "Developer ID Application: Company (ABC123XYZ)"; got != want {
 		t.Errorf("Identity = %q, want %q", got, want)
 	}
-	if !cfg.SigningConfig.Configured() {
+	if !cfg.Signing.Configured() {
 		t.Error("expected SigningConfig to be Configured()")
 	}
 	if got, want := cfg.Permissions.ExecutableMode(), os.FileMode(0755); got != want {
@@ -129,10 +131,10 @@ icon: /path/to/icon.png
 	if got, want := cfg.Permissions.MacOSDirMode(), os.FileMode(0750); got != want {
 		t.Errorf("MacOSDirMode = %04o, want %04o", got, want)
 	}
-	if !cfg.NotaryConfig.Configured() {
+	if !cfg.Notary.Configured() {
 		t.Error("expected NotaryConfig to be Configured()")
 	}
-	if got, want := cfg.KeychainProfile, "AC_NOTARY"; got != want {
+	if got, want := cfg.Notary.KeychainProfile, "AC_NOTARY"; got != want {
 		t.Errorf("KeychainProfile = %q, want %q", got, want)
 	}
 	if got, want := cfg.Path, "/tmp/output.app"; got != want {
@@ -171,15 +173,15 @@ func TestLoad_None(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loc.YAML) != 0 || len(loc.Env) != 0 || cfg.Identity != "" {
+	if len(loc.YAML) != 0 || len(loc.Env) != 0 || cfg.Signing.Identity != "" {
 		t.Errorf("got %+v, %+v", cfg, loc)
 	}
 }
 
 func TestLoad_Defaults(t *testing.T) {
 	tmpDir, _ := setupConfigTestDir(t)
-	newConfigFile(t, tmpDir, "gobundle-shared.yaml", "identity: dev\n")
-	newConfigFile(t, tmpDir, "gobundle-app.yaml", "info.plist:\n  CFBundleDisplayName: App\n")
+	newConfigFile(t, tmpDir, "gobundle-shared.yaml", "signing:\n  identity: dev\n")
+	newConfigFile(t, tmpDir, "gobundle-app.yaml", "info_plist:\n  CFBundleDisplayName: App\n")
 
 	cfg, loc, err := gobundleconfig.Load(t.Context(), newFilesFlag(t))
 	if err != nil {
@@ -188,16 +190,16 @@ func TestLoad_Defaults(t *testing.T) {
 	if got, want := loc.YAML, []string{"gobundle-shared.yaml", "gobundle-app.yaml"}; !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
-	if cfg.Identity != "dev" || cfg.Info.CFBundleDisplayName != "App" {
+	if cfg.Signing.Identity != "dev" || cfg.Info.CFBundleDisplayName != "App" {
 		t.Errorf("got %+v", cfg)
 	}
 }
 
 func TestLoad_Set(t *testing.T) {
 	tmpDir, _ := setupConfigTestDir(t)
-	newConfigFile(t, tmpDir, "gobundle-shared.yaml", "identity: default\n")
-	custom := newConfigFile(t, tmpDir, "custom-shared.yaml", "identity: custom\n")
-	customApp := newConfigFile(t, tmpDir, "custom-app.yaml", "info.plist:\n  CFBundleDisplayName: Custom\n")
+	newConfigFile(t, tmpDir, "gobundle-shared.yaml", "signing:\n  identity: default\n")
+	custom := newConfigFile(t, tmpDir, "custom-shared.yaml", "signing:\n  identity: custom\n")
+	customApp := newConfigFile(t, tmpDir, "custom-app.yaml", "info_plist:\n  CFBundleDisplayName: Custom\n")
 
 	// The files that are set replace the defaults.
 	cfg, loc, err := gobundleconfig.Load(t.Context(), newFilesFlag(t, custom, customApp))
@@ -207,7 +209,7 @@ func TestLoad_Set(t *testing.T) {
 	if got, want := loc.YAML, []string{custom, customApp}; !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
-	if cfg.Identity != "custom" || cfg.Info.CFBundleDisplayName != "Custom" {
+	if cfg.Signing.Identity != "custom" || cfg.Info.CFBundleDisplayName != "Custom" {
 		t.Errorf("got %+v", cfg)
 	}
 
@@ -219,8 +221,8 @@ func TestLoad_Set(t *testing.T) {
 
 func TestLoad_EnvVar(t *testing.T) {
 	tmpDir, _ := setupConfigTestDir(t)
-	envShared := newConfigFile(t, tmpDir, "env-shared.yaml", "identity: env\n")
-	envApp := newConfigFile(t, tmpDir, "env-app.yaml", "info.plist:\n  CFBundleDisplayName: Env\n")
+	envShared := newConfigFile(t, tmpDir, "env-shared.yaml", "signing:\n  identity: env\n")
+	envApp := newConfigFile(t, tmpDir, "env-app.yaml", "info_plist:\n  CFBundleDisplayName: Env\n")
 	t.Setenv(gobundleconfig.ConfigBundleEnvVar, envShared+","+envApp)
 
 	cfg, loc, err := gobundleconfig.Load(t.Context(), newFilesFlag(t))
@@ -230,14 +232,14 @@ func TestLoad_EnvVar(t *testing.T) {
 	if got, want := loc.YAML, []string{envShared, envApp}; !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
-	if cfg.Identity != "env" {
+	if cfg.Signing.Identity != "env" {
 		t.Errorf("got %+v", cfg)
 	}
 
 	// The command line takes precedence over the environment.
-	other := newConfigFile(t, tmpDir, "other.yaml", "identity: other\n")
+	other := newConfigFile(t, tmpDir, "other.yaml", "signing:\n  identity: other\n")
 	cfg, _, err = gobundleconfig.Load(t.Context(), newFilesFlag(t, other))
-	if err != nil || cfg.Identity != "other" {
+	if err != nil || cfg.Signing.Identity != "other" {
 		t.Errorf("got %+v, %v", cfg, err)
 	}
 }
@@ -261,8 +263,8 @@ func TestLoad_UserConfigDir(t *testing.T) {
 	if err := os.MkdirAll(appDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	shared := newConfigFile(t, appDir, "gobundle-shared.yaml", "identity: user-config-dir\n")
-	app := newConfigFile(t, appDir, "gobundle-app.yaml", "info.plist:\n  CFBundleDisplayName: UserConfigDir\n")
+	shared := newConfigFile(t, appDir, "gobundle-shared.yaml", "signing:\n  identity: user-config-dir\n")
+	app := newConfigFile(t, appDir, "gobundle-app.yaml", "info_plist:\n  CFBundleDisplayName: UserConfigDir\n")
 
 	_, loc, err := gobundleconfig.Load(t.Context(), newFilesFlag(t))
 	if err != nil {
@@ -278,7 +280,7 @@ func TestLoad_UserConfigDir(t *testing.T) {
 // of the environment variables file, and which file that is.
 func TestLoad_EnvFile(t *testing.T) {
 	tmpDir, _ := setupConfigTestDir(t)
-	newConfigFile(t, tmpDir, "gobundle-shared.yaml", "identity: ${LOAD_TEST_IDENTITY}\nprofile: ${LOAD_TEST_PROFILE}\n")
+	newConfigFile(t, tmpDir, "gobundle-shared.yaml", "signing:\n  identity: ${LOAD_TEST_IDENTITY}\nprovisioning_profile: ${LOAD_TEST_PROFILE}\n")
 	newConfigFile(t, tmpDir, "gobundle-env.env", "LOAD_TEST_IDENTITY=from-file\nLOAD_TEST_PROFILE=$HOME/profile\n")
 
 	cfg, loc, err := gobundleconfig.Load(t.Context(), newFilesFlag(t))
@@ -288,13 +290,13 @@ func TestLoad_EnvFile(t *testing.T) {
 	if got, want := loc.Env, []string{"gobundle-env.env"}; !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
-	if cfg.Identity != "from-file" || cfg.ProvisioningProfile != os.Getenv("HOME")+"/profile" {
+	if cfg.Signing.Identity != "from-file" || cfg.ProvisioningProfile != os.Getenv("HOME")+"/profile" {
 		t.Errorf("got %+v", cfg)
 	}
 
 	// The process environment overrides the file.
 	t.Setenv("LOAD_TEST_IDENTITY", "from-env")
-	if cfg, _, err = gobundleconfig.Load(t.Context(), newFilesFlag(t)); err != nil || cfg.Identity != "from-env" {
+	if cfg, _, err = gobundleconfig.Load(t.Context(), newFilesFlag(t)); err != nil || cfg.Signing.Identity != "from-env" {
 		t.Errorf("got %+v, %v", cfg, err)
 	}
 
@@ -303,7 +305,7 @@ func TestLoad_EnvFile(t *testing.T) {
 	newConfigFile(t, tmpDir, "other.env", "LOAD_TEST_IDENTITY=other\nLOAD_TEST_PROFILE=p\n")
 	t.Setenv("LOAD_TEST_IDENTITY", "")
 	t.Setenv(gobundleconfig.EnvBundleEnvVar, "other")
-	if cfg, _, err = gobundleconfig.Load(t.Context(), newFilesFlag(t)); err != nil || cfg.Identity != "other" {
+	if cfg, _, err = gobundleconfig.Load(t.Context(), newFilesFlag(t)); err != nil || cfg.Signing.Identity != "other" {
 		t.Errorf("got %+v, %v", cfg, err)
 	}
 	t.Setenv(gobundleconfig.EnvBundleEnvVar, "absent")
@@ -314,8 +316,8 @@ func TestLoad_EnvFile(t *testing.T) {
 
 func TestLoad_Extra(t *testing.T) {
 	tmpDir, _ := setupConfigTestDir(t)
-	newConfigFile(t, tmpDir, "gobundle-shared.yaml", "identity: shared\n")
-	plugin := newConfigFile(t, tmpDir, "plugin.yaml", "info.plist:\n  CFBundleDisplayName: Plugin\n")
+	newConfigFile(t, tmpDir, "gobundle-shared.yaml", "signing:\n  identity: shared\n")
+	plugin := newConfigFile(t, tmpDir, "plugin.yaml", "info_plist:\n  CFBundleDisplayName: Plugin\n")
 
 	cfg, loc, err := gobundleconfig.Load(t.Context(), newFilesFlag(t), plugin)
 	if err != nil {
@@ -324,7 +326,7 @@ func TestLoad_Extra(t *testing.T) {
 	if got, want := loc.YAML, []string{"gobundle-shared.yaml", plugin}; !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
-	if cfg.Identity != "shared" || cfg.Info.CFBundleDisplayName != "Plugin" {
+	if cfg.Signing.Identity != "shared" || cfg.Info.CFBundleDisplayName != "Plugin" {
 		t.Errorf("got %+v", cfg)
 	}
 	// The additional files must exist.

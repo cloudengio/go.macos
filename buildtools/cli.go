@@ -5,12 +5,17 @@
 package buildtools
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/cmdutil/cmdtypes"
+	"cloudeng.io/cmdutil/cmdyaml"
 	"cloudeng.io/cmdutil/flags"
 	"gopkg.in/yaml.v3"
 )
@@ -22,8 +27,13 @@ type CommonFlags struct {
 	Release    bool   `subcmd:"swift-release,false,'if set, use swift release build, otherwise debug'"`
 	BundlePath string `subcmd:"bundle-path,'','path for the output bundle, overrides any specified in a config file'"`
 	Signer     string `subcmd:"signer,'','signing identity to use, overrides any specified in a config file'"`
-	ConfigFile string `subcmd:"config,'spec.yaml','path to the build specification yaml file'"`
 	Verbose    bool   `subcmd:"verbose,false,'if set, print verbose output'"`
+	// Config holds the build specification files: YAML files, applied in order,
+	// and a file of NAME=VALUE environment variable definitions (.env) that
+	// ${NAME} references in them are expanded from, see Load.
+	Config cmdconfig.FilesFlag `subcmd:"config,'spec.yaml','comma separated list of the YAML build specification files and of the file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults'"`
+
+	files []string // the YAML files that Load read.
 }
 
 // RegisterFlagsOrDie registers a struct that contains an instance of CommonFlags with the provided
@@ -58,44 +68,53 @@ func (f CommonFlags) StepRunnerOptions() []StepRunnerOption {
 	return opts
 }
 
-// ParseFile parses the specified config file into cfg.
-func (f CommonFlags) ParseFile(cfg any) error {
-	data, err := os.ReadFile(f.ConfigFile)
+// Load locates the files named by the Config flag, searching for them in the
+// current directory and the user's configuration directories for appDir, see
+// cmdconfig.SearchPath, and parses the YAML files into cfg, expanding ${NAME}
+// references from the environment and the environment variables file; one that
+// is not defined is replaced by an empty string. Unknown fields are ignored.
+// It is an error for there to be no YAML file.
+func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdconfig.Located, error) {
+	spec := cmdconfig.Spec{Path: cmdconfig.SearchPath(appDir), FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv}}
+	loc, err := cmdconfig.Load(ctx, cfg, &f.Config, spec, cmdyaml.WithStrictFields(false), cmdyaml.WithUnresolvedEmpty())
 	if err != nil {
-		return err
+		return loc, err
 	}
-	return yaml.Unmarshal(data, cfg)
+	if len(loc.YAML) == 0 {
+		return loc, fmt.Errorf("no build specification found, looked for %v in any of %v",
+			strings.Join(f.Config.Files(cmdconfig.FileTypeYAML, false), ", "), strings.Join(filepath.SplitList(loc.SearchPath), ", "))
+	}
+	f.files = loc.YAML
+	return loc, nil
+}
+
+// Apply applies the overrides given by the BundlePath and Signer flags to cfg.
+func (f CommonFlags) Apply(cfg *Bundle) {
+	if cfg == nil {
+		return
+	}
+	if f.BundlePath != "" {
+		cfg.Path = f.BundlePath
+	}
+	if f.Signer != "" {
+		cfg.Signing.Identity = f.Signer
+	}
+}
+
+// specFiles returns the files that the specification was read from, or those
+// that it would be.
+func (f CommonFlags) specFiles() string {
+	files := f.files
+	if len(files) == 0 {
+		files = f.Config.Files(cmdconfig.FileTypeYAML, false)
+	}
+	return strings.Join(files, ", ")
 }
 
 // PermissionsConfig represents permissions configuration for bundle contents.
 type PermissionsConfig struct {
 	Executable cmdtypes.Permissions `yaml:"executable,omitempty"`
 	MacOSDir   cmdtypes.Permissions `yaml:"macos_dir,omitempty"`
-}
-
-// UnmarshalYAML implements yaml.Unmarshaler to accept both "executable" / "macos_dir"
-// and "executable_permissions" / "macos_dir_permissions".
-func (p *PermissionsConfig) UnmarshalYAML(node *yaml.Node) error {
-	var raw struct {
-		Executable            cmdtypes.Permissions `yaml:"executable"`
-		ExecutablePermissions cmdtypes.Permissions `yaml:"executable_permissions"`
-		MacOSDir              cmdtypes.Permissions `yaml:"macos_dir"`
-		MacOSDirPermissions   cmdtypes.Permissions `yaml:"macos_dir_permissions"`
-	}
-	if err := node.Decode(&raw); err != nil {
-		return err
-	}
-	if raw.Executable != 0 {
-		p.Executable = raw.Executable
-	} else {
-		p.Executable = raw.ExecutablePermissions
-	}
-	if raw.MacOSDir != 0 {
-		p.MacOSDir = raw.MacOSDir
-	} else {
-		p.MacOSDir = raw.MacOSDirPermissions
-	}
-	return nil
 }
 
 // ExecutableMode returns the executable file mode, or 0 if not configured.
@@ -106,34 +125,6 @@ func (p PermissionsConfig) ExecutableMode() fs.FileMode {
 // MacOSDirMode returns the MacOS directory file mode, or 0 if not configured.
 func (p PermissionsConfig) MacOSDirMode() fs.FileMode {
 	return p.MacOSDir.FileMode()
-}
-
-// Config represents common configuration options
-// that can be read from a yaml config file.
-type Config struct {
-	AppBundle             string               `yaml:"bundle"`
-	Signing               SigningConfig        `yaml:"signing"`
-	Permissions           PermissionsConfig    `yaml:"permissions,omitempty"`
-	ExecutablePermissions cmdtypes.Permissions `yaml:"executable_permissions,omitempty"`
-	MacOSDirPermissions   cmdtypes.Permissions `yaml:"macos_dir_permissions,omitempty"`
-}
-
-// ExecutableMode returns the configured executable permissions, checking both
-// the nested permissions section and top-level executable_permissions.
-func (c Config) ExecutableMode() fs.FileMode {
-	if c.Permissions.Executable != 0 {
-		return c.Permissions.Executable.FileMode()
-	}
-	return c.ExecutablePermissions.FileMode()
-}
-
-// MacOSDirMode returns the configured MacOS directory permissions, checking both
-// the nested permissions section and top-level macos_dir_permissions.
-func (c Config) MacOSDirMode() fs.FileMode {
-	if c.Permissions.MacOSDir != 0 {
-		return c.Permissions.MacOSDir.FileMode()
-	}
-	return c.MacOSDirPermissions.FileMode()
 }
 
 // SigningConfig represents signing related configuration
@@ -170,9 +161,9 @@ func (f CommonFlags) PrintResult(spec any, result RunResult) error {
 	verbose := f.Verbose || err != nil
 	if verbose {
 		if out, err := yaml.Marshal(spec); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to marshal spec parsed from %v: %v\n", f.ConfigFile, err)
+			fmt.Fprintf(os.Stderr, "Failed to marshal spec parsed from %v: %v\n", f.specFiles(), err)
 		} else {
-			fmt.Printf("%v: %s\n", f.ConfigFile, out)
+			fmt.Printf("%v: %s\n", f.specFiles(), out)
 		}
 		for _, r := range result {
 			if r.Error() != nil {
