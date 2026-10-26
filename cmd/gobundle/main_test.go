@@ -22,12 +22,13 @@ var gobundleBinary string
 
 const (
 	sharedConfigNoIdentity = `
-identity:
-entitlements:
-  com.apple.security.app-sandbox: true
+signing:
+  identity:
+  entitlements:
+    com.apple.security.app-sandbox: true
 `
 	appConfig = `
-info.plist:
+info_plist:
   CFBundleIdentifier: com.shared.bundle
   CFBundleDisplayName: My App
 `

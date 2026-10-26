@@ -25,34 +25,35 @@ func newBundle(cfg gobundleconfig.T) bundle {
 		cfg:        cfg,
 		stepRunner: buildtools.NewRunner(buildtools.WithStepVerbose(verbose)),
 		ap: buildtools.AppBundle{
-			Path: cfg.Path,
+			Path: cfg.Bundle,
 			Info: cfg.Info,
 		},
 	}
 }
 
-func (b bundle) handleIcons() (func(), error) {
+// iconSteps returns the steps that create the icon of the app, and a function
+// to remove the temporary directory that they use.
+func (b bundle) iconSteps() ([]buildtools.Step, func(), error) {
 	if len(b.cfg.Icon) == 0 {
-		return func() {}, nil
+		return nil, func() {}, nil
 	}
 	tempDir, err := os.MkdirTemp("", "gobundle-icon")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	iconDir := filepath.Join(tempDir, "AppIcon.iconset")
 	if err := os.Mkdir(iconDir, 0700); err != nil {
 		_ = os.RemoveAll(tempDir)
-		return nil, err
+		return nil, nil, err
 	}
 	iconSet := buildtools.IconSet{
 		Icon: b.cfg.Icon,
 		Dir:  iconDir,
 	}
-	b.stepRunner.AddSteps(iconSet.CreateIconVariants(
-		iconSet.Icon, iconDir)...)
-	b.stepRunner.AddSteps(iconSet.CreateIcns())
-	b.stepRunner.AddSteps(b.ap.CopyIcons(iconSet)...)
-	return func() {
+	steps := iconSet.CreateIconVariants(iconSet.Icon, iconDir)
+	steps = append(steps, iconSet.CreateIcns())
+	steps = append(steps, b.ap.CopyIcons(iconSet)...)
+	return steps, func() {
 		os.RemoveAll(tempDir)
 	}, nil
 }
@@ -63,46 +64,26 @@ func (b bundle) handleIcons() (func(), error) {
 // Local `build`/`run` still embed the provisioning profile, so entitlements
 // are authorized without it.
 func (b bundle) createAndSign(ctx context.Context, binary string, notarize bool) error {
-	b.stepRunner.AddSteps(b.ap.Clean()...)
-	b.stepRunner.AddSteps(b.ap.Create()...)
-	if b.cfg.ProvisioningProfile != "" {
-		profile := os.ExpandEnv(b.cfg.ProvisioningProfile)
-		b.stepRunner.AddSteps(b.ap.CopyContents(profile, "embedded.provisionprofile"))
-	}
-	b.stepRunner.AddSteps(b.ap.WriteInfoPlist(),
-		b.ap.CopyExecutable(binary))
-
-	cleanup, err := b.handleIcons()
+	icons, cleanup, err := b.iconSteps()
 	if err != nil {
 		return fmt.Errorf("error processing icons: %v", err)
 	}
 	defer cleanup()
 
-	if b.cfg.SigningConfig.Configured() {
-		signer := b.cfg.Signer()
-		b.stepRunner.AddSteps(
-			b.ap.SignExecutable(signer),
-			b.ap.Sign(signer),
-		)
+	steps, err := buildtools.BundleBuilder{
+		Config:   b.cfg.BundleConfig,
+		App:      b.ap,
+		Binary:   binary,
+		Notarize: notarize,
+		Contents: icons,
+	}.Steps()
+	if err != nil {
+		return err
 	}
-
-	// When requested (notarize: true, and only for `install`), notarize the
-	// signed bundle with Apple's notary service and staple the ticket so
-	// Gatekeeper accepts it on other Macs. It requires a signed bundle and notary
-	// credentials.
 	if notarize {
-		if !b.cfg.NotaryConfig.Configured() {
-			return fmt.Errorf("notarize is set but no notarization credentials are configured: set a 'notary' section in the config")
-		}
-		if err := b.cfg.ValidateSigning(b.cfg.SigningConfig); err != nil {
-			return err
-		}
 		printf("Submitting %s to Apple notary service (waiting for response)...\n", filepath.Base(b.ap.Path))
-		b.stepRunner.AddSteps(b.ap.Notarize(b.cfg.NotaryConfig)...)
 	}
-
-	b.stepRunner.AddSteps(b.ap.SetExecutablePermissions(binary, b.cfg.Permissions.ExecutableMode()))
-	b.stepRunner.AddSteps(b.ap.SetMacOSDirPermissions(b.cfg.Permissions.MacOSDirMode()))
+	b.stepRunner.AddSteps(steps...)
 
 	var runnerOpts []buildtools.CommandRunnerOption
 	if verbose {

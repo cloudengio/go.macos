@@ -19,7 +19,7 @@ func handleGoInstall(ctx context.Context, cfg gobundleconfig.T, notarize bool, b
 	if len(installDir) == 0 {
 		return fmt.Errorf("cannot determine install directory")
 	}
-	cfg.Path = filepath.Join(installDir, cfg.Info.CFBundleName+".app")
+	cfg.Bundle = filepath.Join(installDir, cfg.Info.CFBundleName+".app")
 
 	if err := os.Remove(binary); err != nil && !os.IsNotExist(err) { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error removing original binary: %v", err)

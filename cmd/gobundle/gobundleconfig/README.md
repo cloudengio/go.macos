@@ -64,13 +64,9 @@ in the order they are applied, and the file of environment variables.
 ### Type T
 ```go
 type T struct {
-	buildtools.SigningConfig `yaml:",inline"`
-	Permissions              buildtools.PermissionsConfig `yaml:"permissions,omitempty"`
-	Path                     string                       `yaml:"bundle"`
-	Info                     buildtools.InfoPlist         `yaml:"info.plist"`
-	ProvisioningProfile      string                       `yaml:"profile"`
-	Icon                     string                       `yaml:"icon"`
-	buildtools.NotaryConfig  `yaml:"notary"`
+	buildtools.BundleConfig `yaml:",inline"`
+	// Icon is the path of the png image to create the icon of the app from.
+	Icon string `yaml:"icon"`
 }
 ```
 T represents the configuration for building a Go application bundle via the
@@ -96,11 +92,11 @@ and those that are defaults and do not exist are omitted. extra, if any,
 are further YAML files, applied last, that must exist. $VAR and ${VAR}
 references in them are expanded from the process environment and, for any
 variable the environment does not define, from the environment variables
-file, see cmdyaml.Load. A file that was specified, on the command line or by
-an environment variable, and is not there is an error: it was asked for by
-name, so silently carrying on without it would hide a typo, or a file that
-is not where it is thought to be, until the bundle turns out to have been
-built with the wrong identity. The defaults are optional.
+file, see cmdconfig.Load. A file that was specified, on the command line or
+by an environment variable, and is not there is an error: it was asked for
+by name, so silently carrying on without it would hide a typo, or a file
+that is not where it is thought to be, until the bundle turns out to have
+been built with the wrong identity. The defaults are optional.
 
 
 

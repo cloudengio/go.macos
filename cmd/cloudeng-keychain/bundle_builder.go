@@ -131,11 +131,11 @@ func buildBundle(ctx context.Context, out string, softlink, install bool, cfg go
 	// Outer client app.
 	runner.AddSteps(outer.WriteInfoPlist(), outer.CopyExecutable(client))
 
-	if cfg.Identity != "" {
+	if cfg.Signing.Identity != "" {
 		// Sign the nested plugin (with entitlements) fully first, then the client
 		// (no entitlements), then seal the outer bundle.
-		entitled := cfg.Signer()
-		plain := buildtools.NewSigner(cfg.Identity, nil, nil, cfg.CodesignArguments)
+		entitled := cfg.Signing.Signer()
+		plain := buildtools.NewSigner(cfg.Signing.Identity, nil, nil, cfg.Signing.CodesignArguments)
 		runner.AddSteps(
 			inner.SignExecutable(entitled),
 			inner.Sign(entitled),
@@ -145,13 +145,13 @@ func buildBundle(ctx context.Context, out string, softlink, install bool, cfg go
 	}
 
 	if notarize {
-		if cfg.Identity == "" {
+		if cfg.Signing.Identity == "" {
 			return fmt.Errorf("-notarize requires a signing identity in %s", pluginConfigYML)
 		}
-		if !cfg.NotaryConfig.Configured() {
+		if !cfg.Notary.Configured() {
 			return fmt.Errorf("-notarize requires a notary section in %s", pluginConfigYML)
 		}
-		runner.AddSteps(outer.Notarize(cfg.NotaryConfig)...)
+		runner.AddSteps(outer.Notarize(cfg.Notary)...)
 	}
 
 	runner.AddSteps(inner.SetExecutablePermissions(plugin, cfg.Permissions.ExecutableMode()))

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 
 	"cloudeng.io/cmdutil/cmdconfig"
-	"cloudeng.io/cmdutil/cmdyaml"
 	"cloudeng.io/macos/buildtools"
 )
 
@@ -19,13 +18,9 @@ import (
 // used to dynamically build a bundle for a Go application via gobundle run
 // or gobundle build.
 type T struct {
-	buildtools.SigningConfig `yaml:",inline"`
-	Permissions              buildtools.PermissionsConfig `yaml:"permissions,omitempty"`
-	Path                     string                       `yaml:"bundle"`
-	Info                     buildtools.InfoPlist         `yaml:"info.plist"`
-	ProvisioningProfile      string                       `yaml:"profile"`
-	Icon                     string                       `yaml:"icon"`
-	buildtools.NotaryConfig  `yaml:"notary"`
+	buildtools.BundleConfig `yaml:",inline"`
+	// Icon is the path of the png image to create the icon of the app from.
+	Icon string `yaml:"icon"`
 }
 
 const (
@@ -82,7 +77,7 @@ var Spec = cmdconfig.Spec{
 // further YAML files, applied last, that must exist. $VAR and ${VAR}
 // references in them are expanded from the process environment and, for any
 // variable the environment does not define, from the environment variables
-// file, see cmdyaml.Load. A file that was specified, on the command line or
+// file, see cmdconfig.Load. A file that was specified, on the command line or
 // by an environment variable, and is not there is an error: it was asked for
 // by name, so silently carrying on without it would hide a typo, or a file
 // that is not where it is thought to be, until the bundle turns out to have
@@ -99,15 +94,15 @@ func Load(ctx context.Context, ff *cmdconfig.FilesFlag, extra ...string) (T, *cm
 		}
 		loc.YAML = append(loc.YAML, file)
 	}
-	return cfg, loc, cmdyaml.LoadFiles(ctx, &cfg, loc)
+	return cfg, loc, cmdconfig.LoadFiles(ctx, &cfg, loc)
 }
 
 // WithDefaultsForBinary returns a copy of the configuration with default values set for the
 // specified binary. The binary should be an absolute path to the binary to be bundled.
 func (cfg T) WithDefaultsForBinary(binary string) T {
 	cfg.Info = cfg.Info.WithDefaults(binary)
-	if cfg.Path == "" {
-		cfg.Path = filepath.Join(filepath.Dir(cfg.Path), cfg.Info.CFBundleExecutable+".app")
+	if cfg.Bundle == "" {
+		cfg.Bundle = filepath.Join(filepath.Dir(cfg.Bundle), cfg.Info.CFBundleExecutable+".app")
 	}
 	return cfg
 }

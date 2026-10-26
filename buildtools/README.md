@@ -535,6 +535,110 @@ func (b BrowserType) String() string
 
 
 
+### Type BundleBuilder
+```go
+type BundleBuilder struct {
+	// Config is the configuration of the bundle.
+	Config BundleConfig
+	// App is the bundle to create. It is Config.AppBundle() unless the
+	// caller has resolved defaults for its path or Info.plist, or both.
+	App AppBundle
+	// Binary is the executable to copy into the bundle.
+	Binary string
+	// Notarize requests that the signed bundle is notarized, which requires
+	// notary credentials and a Developer ID signing identity.
+	Notarize bool
+	// Contents are further steps that add to the contents of the bundle, eg.
+	// resources and icons. They are run after the executable is copied and
+	// before the bundle is signed.
+	Contents []Step
+}
+```
+BundleBuilder creates the steps that build and sign an application bundle as
+described by a BundleConfig.
+
+### Methods
+
+```go
+func (b BundleBuilder) Steps() ([]Step, error)
+```
+Steps returns the steps to build the bundle after validating it, in the
+order they must be run: the bundle is created and its Info.plist, the
+executable, the provisioning profile and the Contents are added to it, the
+permissions are set, the bundle is signed, if there is a signing identity,
+and then notarized, if requested. Everything that changes the contents of
+the bundle precedes signing, which any later change would invalidate.
+
+
+```go
+func (b BundleBuilder) Validate() error
+```
+Validate checks that the bundle can be built: that the configuration is
+consistent, that a provisioning profile that is configured can be read,
+and that notarization, if requested, is possible.
+
+
+
+
+### Type BundleConfig
+```go
+type BundleConfig struct {
+	// Bundle is the path of the application bundle to create.
+	Bundle string `yaml:"bundle"`
+	// Info holds the fields of the bundle's Info.plist.
+	Info InfoPlist `yaml:"info_plist"`
+	// Signing holds the identity, entitlements and arguments for code signing.
+	// The bundle is not signed if there is no identity.
+	Signing SigningConfig `yaml:"signing"`
+	// Notary holds the credentials used to notarize the signed bundle with
+	// Apple's notarization service, when that is asked for.
+	Notary NotaryConfig `yaml:"notary"`
+	// Permissions are the permissions for the executable and for the MacOS
+	// directory of the bundle.
+	Permissions PermissionsConfig `yaml:"permissions,omitempty"`
+	// ProvisioningProfile is the path of the profile to embed in the bundle as
+	// Contents/embedded.provisionprofile. It is required for entitlements that
+	// need to be authorized by it, eg. keychain access groups.
+	ProvisioningProfile string `yaml:"provisioning_profile"`
+}
+```
+BundleConfig is the configuration common to the tools that build a macOS
+application bundle, to be read from YAML and embedded, inline, in the
+configuration of each of them:
+
+    bundle: build/example.app
+    info_plist:
+      CFBundleIdentifier: com.example.app
+    signing:
+      identity: "Developer ID Application: Example (TEAMID)"
+      entitlements:
+        keychain-access-groups: [TEAMID.com.example.app]
+    notary:
+      keychain_profile: example-notary
+    permissions:
+      executable: 0755
+    provisioning_profile: example.provisionprofile
+
+See BundleBuilder for creating the bundle from it.
+
+### Methods
+
+```go
+func (c BundleConfig) AppBundle() AppBundle
+```
+AppBundle returns the bundle described by the configuration.
+
+
+```go
+func (c BundleConfig) Validate() error
+```
+Validate checks that the configuration is consistent: entitlements that are
+restricted, see Entitlements.Restricted, are only authorized by an embedded
+provisioning profile.
+
+
+
+
 ### Type CommandRunner
 ```go
 type CommandRunner struct {
@@ -617,13 +721,23 @@ type CommonFlags struct {
 	Release    bool   `subcmd:"swift-release,false,'if set, use swift release build, otherwise debug'"`
 	BundlePath string `subcmd:"bundle-path,'','path for the output bundle, overrides any specified in a config file'"`
 	Signer     string `subcmd:"signer,'','signing identity to use, overrides any specified in a config file'"`
-	ConfigFile string `subcmd:"config,'spec.yaml','path to the build specification yaml file'"`
 	Verbose    bool   `subcmd:"verbose,false,'if set, print verbose output'"`
+	// Config holds the build specification files: YAML files, applied in order,
+	// and a file of NAME=VALUE environment variable definitions (.env) that
+	// ${NAME} references in them are expanded from, see Load.
+	Config cmdconfig.FilesFlag `subcmd:"config,'spec.yaml','comma separated list of the YAML build specification files and of the file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults'"`
+	// contains filtered or unexported fields
 }
 ```
 CommonFlags represents flags commonly used by buildtools command line tools.
 
 ### Methods
+
+```go
+func (f CommonFlags) Apply(cfg *BundleConfig)
+```
+Apply applies the overrides given by the BundlePath and Signer flags to cfg.
+
 
 ```go
 func (f CommonFlags) CommandRunnerOptions() []CommandRunnerOption
@@ -633,9 +747,14 @@ flags.
 
 
 ```go
-func (f CommonFlags) ParseFile(cfg any) error
+func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdconfig.Located, error)
 ```
-ParseFile parses the specified config file into cfg.
+Load locates the files named by the Config flag, searching for them in the
+current directory and the user's configuration directories for appDir,
+see cmdconfig.SearchPath, and parses the YAML files into cfg, expanding
+${NAME} references from the environment and the environment variables file;
+one that is not defined is replaced by an empty string. Unknown fields are
+ignored. It is an error for there to be no YAML file.
 
 
 ```go
@@ -654,37 +773,6 @@ with a non-zero status if any of the steps failed.
 func (f CommonFlags) StepRunnerOptions() []StepRunnerOption
 ```
 StepRunnerOptions returns options for the StepRunner based on the flags.
-
-
-
-
-### Type Config
-```go
-type Config struct {
-	AppBundle             string               `yaml:"bundle"`
-	Signing               SigningConfig        `yaml:"signing"`
-	Permissions           PermissionsConfig    `yaml:"permissions,omitempty"`
-	ExecutablePermissions cmdtypes.Permissions `yaml:"executable_permissions,omitempty"`
-	MacOSDirPermissions   cmdtypes.Permissions `yaml:"macos_dir_permissions,omitempty"`
-}
-```
-Config represents common configuration options that can be read from a yaml
-config file.
-
-### Methods
-
-```go
-func (c Config) ExecutableMode() fs.FileMode
-```
-ExecutableMode returns the configured executable permissions, checking both
-the nested permissions section and top-level executable_permissions.
-
-
-```go
-func (c Config) MacOSDirMode() fs.FileMode
-```
-MacOSDirMode returns the configured MacOS directory permissions, checking
-both the nested permissions section and top-level macos_dir_permissions.
 
 
 
@@ -715,6 +803,16 @@ func (e Entitlements) MarshalPlist() (any, error)
 ```go
 func (e Entitlements) MarshalYAML() (any, error)
 ```
+
+
+```go
+func (e *Entitlements) Restricted() bool
+```
+Restricted reports whether the entitlements include any that the system
+only honours when they are authorized by a provisioning profile embedded in
+the bundle: keychain access groups, the application and team identifiers,
+and the com.apple.developer.* capabilities. Entitlements such as
+com.apple.security.app-sandbox do not need one. It is false for nil.
 
 
 ```go
@@ -1391,13 +1489,6 @@ ExecutableMode returns the executable file mode, or 0 if not configured.
 func (p PermissionsConfig) MacOSDirMode() fs.FileMode
 ```
 MacOSDirMode returns the MacOS directory file mode, or 0 if not configured.
-
-
-```go
-func (p *PermissionsConfig) UnmarshalYAML(node *yaml.Node) error
-```
-UnmarshalYAML implements yaml.Unmarshaler to accept both "executable" /
-"macos_dir" and "executable_permissions" / "macos_dir_permissions".
 
 
 

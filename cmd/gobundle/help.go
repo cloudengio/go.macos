@@ -45,32 +45,37 @@ gobundle is configured using environment variables and YAML configuration files 
 const para4 = `
 The config file format is as follows:
 
-    identity:       - signing identity
-    codesign-args:  - array of additional arguments to codesign
-    bundle:         - path to the app bundle to create, if empty <binary>.app is used
-    profile:        - path to the provisioning profile to embed in the app bundle,
-                      it can include environment variables
-    entitlements:   - a dictionary of entitlements to embed in the app
-    info.plist:     - a dictionary of fields that correspond to info.Plist entries.
-    notarize:       - if true, notarize and staple the signed bundle so it opens
-                      on other Macs. Only applied by 'install' (notarization is
-                      slow and only matters for distribution); 'build' and 'run'
-                      still embed the profile, so entitlements work locally.
-                      Requires an identity and notary credentials.
-    notary:         - notarization credentials: keychain_profile (a notarytool
-                      stored profile), or apple_id/team_id/password. Passwords
-                      should use @keychain:<item> or @env:<VAR> to avoid exposing
-                      secrets in process tables.
+    bundle:               - path to the app bundle to create, if empty <binary>.app is used
+    info_plist:           - a dictionary of fields that correspond to Info.plist entries.
+    signing:
+        identity:             - signing identity
+        codesign-args:        - array of additional arguments to codesign
+        entitlements:         - a dictionary of entitlements to embed in the app
+        perfile_entitlements: - entitlements for individual files in the bundle
+    provisioning_profile: - path to the provisioning profile to embed in the app bundle,
+                            it can include environment variables. It is required
+                            for entitlements that it authorizes, such as
+                            keychain-access-groups.
+    permissions:          - executable and macos_dir permissions for the app.
+    icon:                 - a png file from which to create the icon of the app.
+    notary:               - notarization credentials: keychain_profile (a notarytool
+                            stored profile), or apple_id/team_id/password. Passwords
+                            should use @keychain:<item> or @env:<VAR> to avoid exposing
+                            secrets in process tables. Notarization is requested with
+                            the --notarize flag, which is only applied by 'install'
+                            (notarization is slow and only matters for distribution);
+                            'build' and 'run' still embed the profile, so entitlements
+                            work locally. It requires an identity and notary credentials.
 
 For example:
-    identity: "Developer ID Application: You (Your Team ID)"
-    entitlements:
-        com.apple.security.app-sandbox: true
-    profile: $HOME/Downloads/example_app.provisionprofile
-    notarize: true
+    signing:
+        identity: "Developer ID Application: You (Your Team ID)"
+        entitlements:
+            com.apple.security.app-sandbox: true
+    provisioning_profile: $HOME/Downloads/example_app.provisionprofile
     notary:
         keychain_profile: my-notary-profile
-    info.plist:
+    info_plist:
         CFBundleIdentifier: <your-team-id>com.you.example
 
 Environment variables can be used in any string value and are expanded before use.

@@ -45,7 +45,7 @@ func handleGoRunExec(ctx context.Context, cfg gobundleconfig.T, notarize bool, b
 		return fmt.Errorf("error creating temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
-	cfg.Path = filepath.Join(tmpDir, cfg.Info.CFBundleExecutable+".app")
+	cfg.Bundle = filepath.Join(tmpDir, cfg.Info.CFBundleExecutable+".app")
 	b := newBundle(cfg)
 	if err := b.createAndSign(ctx, binary, notarize); err != nil {
 		return fmt.Errorf("error creating and signing bundle: %v", err)

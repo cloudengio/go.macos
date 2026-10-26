@@ -18,10 +18,10 @@ import (
 func handleGoBuild(ctx context.Context, cfg gobundleconfig.T, notarize bool, binary string, args []string) error {
 	dashO, _ := consumeBuildArgs(args)
 	if dashO != "" && isDir(dashO) {
-		cfg.Path = filepath.Join(dashO, cfg.Info.CFBundleExecutable+".app")
+		cfg.Bundle = filepath.Join(dashO, cfg.Info.CFBundleExecutable+".app")
 	}
-	if cfg.Path == "" {
-		cfg.Path = cfg.Info.CFBundleExecutable + ".app"
+	if cfg.Bundle == "" {
+		cfg.Bundle = cfg.Info.CFBundleExecutable + ".app"
 	}
 	b := newBundle(cfg)
 

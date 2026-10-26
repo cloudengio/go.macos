@@ -64,12 +64,13 @@ func TestLoadAndMergeConfigs(t *testing.T) {
 	}()
 
 	sharedConfig := `
-identity: shared-identity
-entitlements:
-  com.apple.security.app-sandbox: true
+signing:
+  identity: shared-identity
+  entitlements:
+    com.apple.security.app-sandbox: true
 `
 	appConfig := `
-info.plist:
+info_plist:
   CFBundleIdentifier: com.shared.bundle
   CFBundleDisplayName: My App
 `
@@ -79,13 +80,13 @@ info.plist:
 
 	cfg := loadConfig(t, "", "", "binary")
 
-	if got, want := cfg.Identity, "shared-identity"; got != want {
+	if got, want := cfg.Signing.Identity, "shared-identity"; got != want {
 		t.Errorf("Identity = %q, want %q", got, want)
 	}
-	if cfg.Entitlements == nil {
+	if cfg.Signing.Entitlements == nil {
 		t.Fatalf("expected Entitlements to be non-nil")
 	}
-	entData, err := cfg.Entitlements.MarshalIndent("")
+	entData, err := cfg.Signing.Entitlements.MarshalIndent("")
 	if err != nil || !strings.Contains(string(entData), "com.apple.security.app-sandbox") {
 		t.Errorf("expected AppSandbox in Entitlements, got: %s", string(entData))
 	}
@@ -119,12 +120,13 @@ func TestExpandEnv(t *testing.T) {
 	t.Setenv("TEST_BUNDLE_ID", "com.test.bundle")
 
 	sharedConfig := `
-identity: ${TEST_IDENTITY}
-entitlements:
-  com.apple.security.app-sandbox: true
+signing:
+  identity: ${TEST_IDENTITY}
+  entitlements:
+    com.apple.security.app-sandbox: true
 `
 	appConfig := `
-info.plist:
+info_plist:
   CFBundleIdentifier: ${TEST_BUNDLE_ID}
   CFBundleDisplayName: My App
 `
@@ -133,7 +135,7 @@ info.plist:
 
 	cfg := loadConfig(t, "", "", "binary")
 
-	if got, want := cfg.Identity, "test-identity"; got != want {
+	if got, want := cfg.Signing.Identity, "test-identity"; got != want {
 		t.Errorf("Identity = %q, want %q", got, want)
 	}
 	if got, want := cfg.Info.CFBundleIdentifier, "com.test.bundle"; got != want {
@@ -157,12 +159,13 @@ func TestLoadAndMergeConfigsNotary(t *testing.T) {
 	}()
 
 	sharedConfig := `
-identity: "Developer ID Application: Example Inc (TEAM123)"
+signing:
+  identity: "Developer ID Application: Example Inc (TEAM123)"
 notary:
   keychain_profile: my-notary-profile
 `
 	appConfig := `
-info.plist:
+info_plist:
   CFBundleIdentifier: com.shared.bundle
   CFBundleDisplayName: My App
 `
@@ -171,13 +174,13 @@ info.plist:
 	newConfigFile(t, tmpDir, "gobundle-app.yaml", appConfig)
 
 	cfg := loadConfig(t, "", "", "binary")
-	if got, want := cfg.Identity, "Developer ID Application: Example Inc (TEAM123)"; got != want {
+	if got, want := cfg.Signing.Identity, "Developer ID Application: Example Inc (TEAM123)"; got != want {
 		t.Errorf("Identity = %q, want %q", got, want)
 	}
-	if got, want := cfg.KeychainProfile, "my-notary-profile"; got != want {
+	if got, want := cfg.Notary.KeychainProfile, "my-notary-profile"; got != want {
 		t.Errorf("Notary.KeychainProfile = %q, want %q", got, want)
 	}
-	if !cfg.NotaryConfig.Configured() {
+	if !cfg.Notary.Configured() {
 		t.Errorf("expected Notary to be Configured()")
 	}
 }
@@ -204,14 +207,14 @@ notary:
   keychain_profile: ${NOTARY_PROFILE}
 `
 	appConfig := `
-info.plist:
+info_plist:
   CFBundleIdentifier: com.env.bundle
 `
 	newConfigFile(t, tmpDir, "gobundle-shared.yaml", sharedConfig)
 	newConfigFile(t, tmpDir, "gobundle-app.yaml", appConfig)
 
 	cfg := loadConfig(t, "", "", "binary")
-	if got, want := cfg.KeychainProfile, "env-notary-profile"; got != want {
+	if got, want := cfg.Notary.KeychainProfile, "env-notary-profile"; got != want {
 		t.Errorf("Notary.KeychainProfile = %q, want %q", got, want)
 	}
 }
@@ -237,7 +240,7 @@ permissions:
   macos_dir: 0750
 `
 	appConfig := `
-info.plist:
+info_plist:
   CFBundleIdentifier: com.perm.bundle
 `
 	newConfigFile(t, tmpDir, "gobundle-shared.yaml", sharedConfig)
@@ -256,38 +259,38 @@ func TestCreateAndSignNotarizeValidation(t *testing.T) {
 	ctx := t.Context()
 
 	// 1. Notarize requested but no identity
-	b := newBundle(gobundleconfig.T{
-		NotaryConfig: buildtools.NotaryConfig{
+	b := newBundle(gobundleconfig.T{BundleConfig: buildtools.BundleConfig{
+		Notary: buildtools.NotaryConfig{
 			KeychainProfile: "my-profile",
 		},
-	})
+	}})
 	err := b.createAndSign(ctx, "testbin", true)
 	if err == nil || err.Error() != "notarize is set but the bundle is not signed: set an 'identity' in the config" {
 		t.Errorf("expected missing identity error, got: %v", err)
 	}
 
 	// 2. Notarize requested with Apple Development identity
-	b = newBundle(gobundleconfig.T{
-		SigningConfig: buildtools.SigningConfig{
+	b = newBundle(gobundleconfig.T{BundleConfig: buildtools.BundleConfig{
+		Signing: buildtools.SigningConfig{
 			Identity: "Apple Development: Developer (TEAM123)",
 		},
-		NotaryConfig: buildtools.NotaryConfig{
+		Notary: buildtools.NotaryConfig{
 			KeychainProfile: "my-profile",
 		},
-	})
+	}})
 	err = b.createAndSign(ctx, "testbin", true)
 	if err == nil || !strings.Contains(err.Error(), "requires a 'Developer ID Application' identity") {
 		t.Errorf("expected Developer ID identity requirement error, got: %v", err)
 	}
 
 	// 3. Notarize requested with no notary credentials
-	b = newBundle(gobundleconfig.T{
-		SigningConfig: buildtools.SigningConfig{
+	b = newBundle(gobundleconfig.T{BundleConfig: buildtools.BundleConfig{
+		Signing: buildtools.SigningConfig{
 			Identity: "Developer ID Application: Developer (TEAM123)",
 		},
-	})
+	}})
 	err = b.createAndSign(ctx, "testbin", true)
-	if err == nil || !strings.Contains(err.Error(), "no notarization credentials are configured") {
+	if err == nil || !strings.Contains(err.Error(), "requires notary credentials") {
 		t.Errorf("expected unconfigured notary error, got: %v", err)
 	}
 }
@@ -321,18 +324,19 @@ PROFILE=file-profile
 	// contains a colon, which would otherwise not be valid YAML once
 	// substituted.
 	newConfigFile(t, tmpDir, "gobundle-shared.yaml", `
-identity: "${IDENTITY}"
-profile: ${PROFILE}
+signing:
+  identity: "${IDENTITY}"
+provisioning_profile: ${PROFILE}
 `)
 	newConfigFile(t, tmpDir, "gobundle-app.yaml", `
-info.plist:
+info_plist:
   CFBundleIdentifier: ${TEAM_ID}.com.example.app
 `)
 
 	t.Setenv("PROFILE", "shell-profile")
 
 	cfg := loadConfig(t, "", "", "binary")
-	if got, want := cfg.Identity, "Developer ID Application: Example Inc (TEAM123)"; got != want {
+	if got, want := cfg.Signing.Identity, "Developer ID Application: Example Inc (TEAM123)"; got != want {
 		t.Errorf("Identity = %q, want %q", got, want)
 	}
 	if got, want := cfg.Info.CFBundleIdentifier, "TEAM123.com.example.app"; got != want {
@@ -348,7 +352,7 @@ info.plist:
 		t.Fatal(err)
 	}
 	cfg = loadConfig(t, "", "", "binary")
-	if got, want := cfg.Identity, "${IDENTITY}"; got != want {
+	if got, want := cfg.Signing.Identity, "${IDENTITY}"; got != want {
 		t.Errorf("Identity = %q, want %q", got, want)
 	}
 	if got, want := cfg.ProvisioningProfile, "shell-profile"; got != want {

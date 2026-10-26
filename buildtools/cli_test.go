@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"cloudeng.io/macos/buildtools"
@@ -31,12 +32,12 @@ signing:
 
 func TestCLIConfig(t *testing.T) {
 
-	var cfg buildtools.Config
+	var cfg buildtools.BundleConfig
 	if err := yaml.Unmarshal([]byte(cliConfig), &cfg); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	if got, want := cfg.AppBundle, "./testing.app"; got != want {
+	if got, want := cfg.Bundle, "./testing.app"; got != want {
 		t.Fatalf("unexpected bundle, got %q, want %q", got, want)
 	}
 	if got, want := cfg.Signing.Identity, "Apple Development: some id"; got != want {
@@ -175,14 +176,6 @@ macos_dir: 0755
 		},
 		{
 			yaml: `
-executable_permissions: "rwx------"
-macos_dir_permissions: "rwxr-xr-x"
-`,
-			wantExec:    0700,
-			wantDirMode: 0755,
-		},
-		{
-			yaml: `
 executable: "u=rwx,go="
 macos_dir: "u=rwx,go=rx"
 `,
@@ -206,55 +199,43 @@ macos_dir: "u=rwx,go=rx"
 	}
 }
 
-func TestConfigPermissionsYAML(t *testing.T) {
-	// 1. Nested permissions block
+func TestBundleConfigPermissionsYAML(t *testing.T) {
 	yamlNested := `
 bundle: ./testing.app
 permissions:
   executable: 0700
   macos_dir: 0755
 `
-	var cfg1 buildtools.Config
-	if err := yaml.Unmarshal([]byte(yamlNested), &cfg1); err != nil {
-		t.Fatalf("Unmarshal nested failed: %v", err)
+	var cfg buildtools.BundleConfig
+	if err := yaml.Unmarshal([]byte(yamlNested), &cfg); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
 	}
-	if got, want := cfg1.ExecutableMode(), fs.FileMode(0700); got != want {
-		t.Errorf("cfg1.ExecutableMode() = %04o, want %04o", got, want)
+	if got, want := cfg.Permissions.ExecutableMode(), fs.FileMode(0700); got != want {
+		t.Errorf("ExecutableMode() = %04o, want %04o", got, want)
 	}
-	if got, want := cfg1.MacOSDirMode(), fs.FileMode(0755); got != want {
-		t.Errorf("cfg1.MacOSDirMode() = %04o, want %04o", got, want)
-	}
-
-	// 2. Top-level permissions
-	yamlTopLevel := `
-bundle: ./testing.app
-executable_permissions: "rwx------"
-macos_dir_permissions: "rwxr-xr-x"
-`
-	var cfg2 buildtools.Config
-	if err := yaml.Unmarshal([]byte(yamlTopLevel), &cfg2); err != nil {
-		t.Fatalf("Unmarshal top-level failed: %v", err)
-	}
-	if got, want := cfg2.ExecutableMode(), fs.FileMode(0700); got != want {
-		t.Errorf("cfg2.ExecutableMode() = %04o, want %04o", got, want)
-	}
-	if got, want := cfg2.MacOSDirMode(), fs.FileMode(0755); got != want {
-		t.Errorf("cfg2.MacOSDirMode() = %04o, want %04o", got, want)
+	if got, want := cfg.Permissions.MacOSDirMode(), fs.FileMode(0755); got != want {
+		t.Errorf("MacOSDirMode() = %04o, want %04o", got, want)
 	}
 }
 
 func TestCommonFlagsAndRunnerOptions(t *testing.T) {
 	tempDir := t.TempDir()
 	cfgFile := filepath.Join(tempDir, "config.yaml")
-	if err := os.WriteFile(cfgFile, []byte("bundle: ./myapp.app\n"), 0600); err != nil {
+	envFile := filepath.Join(tempDir, "vars.env")
+	if err := os.WriteFile(cfgFile, []byte("bundle: ./myapp.app\nsigning:\n  identity: \"${CLI_TEST_ID}\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envFile, []byte("CLI_TEST_ID=from-env-file\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	flags := buildtools.CommonFlags{
-		DryRun:     true,
-		Timing:     true,
-		ConfigFile: cfgFile,
-		Verbose:    true,
+		DryRun:  true,
+		Timing:  true,
+		Verbose: true,
+	}
+	if err := flags.Config.Set(cfgFile + "," + envFile); err != nil {
+		t.Fatal(err)
 	}
 
 	// CommandRunnerOptions
@@ -267,15 +248,17 @@ func TestCommonFlagsAndRunnerOptions(t *testing.T) {
 		t.Error("expected DryRun to be true on runner")
 	}
 
-	// ParseFile
-	var parsed struct {
-		Bundle string `yaml:"bundle"`
+	// Load
+	var parsed buildtools.BundleConfig
+	loc, err := flags.Load(t.Context(), &parsed, "buildtoolstest")
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
 	}
-	if err := flags.ParseFile(&parsed); err != nil {
-		t.Fatalf("ParseFile failed: %v", err)
+	if parsed.Bundle != "./myapp.app" || parsed.Signing.Identity != "from-env-file" {
+		t.Errorf("parsed = %+v", parsed)
 	}
-	if parsed.Bundle != "./myapp.app" {
-		t.Errorf("parsed.Bundle = %q, want ./myapp.app", parsed.Bundle)
+	if len(loc.YAML) != 1 || len(loc.Env) != 1 {
+		t.Errorf("loc = %+v", loc)
 	}
 
 	// PrintResult
@@ -284,6 +267,42 @@ func TestCommonFlagsAndRunnerOptions(t *testing.T) {
 	}
 	if err := flags.PrintResult(parsed, res); err != nil {
 		t.Errorf("PrintResult failed: %v", err)
+	}
+}
+
+func TestCommonFlagsLoadErrors(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	var cfg buildtools.BundleConfig
+
+	// There is no specification to be found.
+	flags := buildtools.CommonFlags{}
+	if err := flags.Config.SetDefault("spec.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := flags.Load(t.Context(), &cfg, "buildtoolstest"); err == nil || !strings.Contains(err.Error(), "no build specification found") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// One that is named must exist.
+	flags = buildtools.CommonFlags{}
+	if err := flags.Config.Set("named.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := flags.Load(t.Context(), &cfg, "buildtoolstest"); err == nil || !strings.Contains(err.Error(), "named.yaml") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestCommonFlagsApply(t *testing.T) {
+	cfg := buildtools.BundleConfig{Bundle: "a.app", Signing: buildtools.SigningConfig{Identity: "id"}}
+	buildtools.CommonFlags{}.Apply(&cfg)
+	if cfg.Bundle != "a.app" || cfg.Signing.Identity != "id" {
+		t.Errorf("no overrides should change nothing: %+v", cfg)
+	}
+	buildtools.CommonFlags{BundlePath: "b.app", Signer: "other"}.Apply(&cfg)
+	if cfg.Bundle != "b.app" || cfg.Signing.Identity != "other" {
+		t.Errorf("got %+v", cfg)
 	}
 }
 
