@@ -29,26 +29,6 @@ DefaultEnvConfigFile = "gobundle-env.env"
 
 
 
-## Variables
-### Spec
-```go
-Spec = cmdconfig.Spec{
-	AppDir: ConfigDir,
-	EnvVars: map[cmdconfig.FileType]string{
-		cmdconfig.FileTypeYAML: ConfigBundleEnvVar,
-		cmdconfig.FileTypeEnv:  EnvBundleEnvVar,
-	},
-	FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv},
-}
-
-```
-Spec specifies how a cmdconfig.FilesFlag is located: the files are
-searched for in ConfigDir, the environment variables ConfigBundleEnvVar and
-EnvBundleEnvVar replace the defaults, and at most one environment variables
-file is used.
-
-
-
 ## Functions
 ### Func DefaultConfigFiles
 ```go
@@ -58,15 +38,22 @@ DefaultConfigFiles are the default configuration files, for use with
 cmdconfig.FilesFlag.SetDefaults: the shared and app specific YAML files,
 in the order they are applied, and the file of environment variables.
 
+### Func Spec
+```go
+func Spec() cmdconfig.Spec
+```
+Spec specifies how a cmdconfig.FilesFlag is located: the files are
+searched for in ConfigDir, the environment variables ConfigBundleEnvVar and
+EnvBundleEnvVar replace the defaults, and at most one environment variables
+file is used.
+
 
 
 ## Types
 ### Type T
 ```go
 type T struct {
-	buildtools.BundleConfig `yaml:",inline"`
-	// Icon is the path of the png image to create the icon of the app from.
-	Icon string `yaml:"icon"`
+	buildtools.Bundle `yaml:",inline"`
 }
 ```
 T represents the configuration for building a Go application bundle via the

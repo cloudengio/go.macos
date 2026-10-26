@@ -58,8 +58,8 @@ func TestWithDefaultsForBinary(t *testing.T) {
 	// 1. Empty Path gets set based on binary name
 	var cfg gobundleconfig.T
 	cfg = cfg.WithDefaultsForBinary("/usr/local/bin/sample")
-	if got, want := cfg.Bundle, "sample.app"; got != want {
-		t.Errorf("cfg.Bundle = %q, want %q", got, want)
+	if got, want := cfg.Path, "sample.app"; got != want {
+		t.Errorf("cfg.Path = %q, want %q", got, want)
 	}
 	if got, want := cfg.Info.CFBundleExecutable, "sample"; got != want {
 		t.Errorf("CFBundleExecutable = %q, want %q", got, want)
@@ -72,12 +72,12 @@ func TestWithDefaultsForBinary(t *testing.T) {
 	}
 
 	// 2. Existing Path is preserved
-	cfgWithCustomPath := gobundleconfig.T{BundleConfig: buildtools.BundleConfig{
-		Bundle: "/tmp/custom.app",
+	cfgWithCustomPath := gobundleconfig.T{Bundle: buildtools.Bundle{
+		Path: "/tmp/custom.app",
 	}}
 	cfgWithCustomPath = cfgWithCustomPath.WithDefaultsForBinary("/usr/local/bin/sample")
-	if got, want := cfgWithCustomPath.Bundle, "/tmp/custom.app"; got != want {
-		t.Errorf("custom cfg.Bundle = %q, want %q", got, want)
+	if got, want := cfgWithCustomPath.Path, "/tmp/custom.app"; got != want {
+		t.Errorf("custom cfg.Path = %q, want %q", got, want)
 	}
 	if got, want := cfgWithCustomPath.Info.CFBundleExecutable, "sample"; got != want {
 		t.Errorf("CFBundleExecutable = %q, want %q", got, want)
@@ -137,7 +137,7 @@ icon: /path/to/icon.png
 	if got, want := cfg.Notary.KeychainProfile, "AC_NOTARY"; got != want {
 		t.Errorf("KeychainProfile = %q, want %q", got, want)
 	}
-	if got, want := cfg.Bundle, "/tmp/output.app"; got != want {
+	if got, want := cfg.Path, "/tmp/output.app"; got != want {
 		t.Errorf("Path = %q, want %q", got, want)
 	}
 	if got, want := cfg.Info.CFBundleIdentifier, "com.company.sample"; got != want {

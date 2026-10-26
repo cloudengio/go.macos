@@ -75,7 +75,7 @@ func (f CommonFlags) StepRunnerOptions() []StepRunnerOption {
 // is not defined is replaced by an empty string. Unknown fields are ignored.
 // It is an error for there to be no YAML file.
 func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdconfig.Located, error) {
-	spec := cmdconfig.Spec{AppDir: appDir, FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv}}
+	spec := cmdconfig.Spec{Path: cmdconfig.SearchPath(appDir), FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv}}
 	loc, err := cmdconfig.Load(ctx, cfg, &f.Config, spec, cmdyaml.WithStrictFields(false), cmdyaml.WithUnresolvedEmpty())
 	if err != nil {
 		return loc, err
@@ -89,9 +89,12 @@ func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdcon
 }
 
 // Apply applies the overrides given by the BundlePath and Signer flags to cfg.
-func (f CommonFlags) Apply(cfg *BundleConfig) {
+func (f CommonFlags) Apply(cfg *Bundle) {
+	if cfg == nil {
+		return
+	}
 	if f.BundlePath != "" {
-		cfg.Bundle = f.BundlePath
+		cfg.Path = f.BundlePath
 	}
 	if f.Signer != "" {
 		cfg.Signing.Identity = f.Signer

@@ -370,35 +370,6 @@ func TestRunCommand(t *testing.T) {
 	}
 }
 
-func TestIconSteps(t *testing.T) {
-	// 1. Empty icon returns no steps and a no-op cleanup
-	b := newBundle(gobundleconfig.T{})
-	steps, cleanup, err := b.iconSteps()
-	if err != nil {
-		t.Fatalf("iconSteps for empty icon failed: %v", err)
-	}
-	if cleanup == nil || len(steps) != 0 {
-		t.Fatalf("expected no steps and a non-nil cleanup function, got %d steps", len(steps))
-	}
-	cleanup()
-
-	// 2. With icon specified
-	tmpDir := t.TempDir()
-	iconFile := filepath.Join(tmpDir, "app.png")
-	if err := os.WriteFile(iconFile, []byte("fake-png"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	bWithIcon := newBundle(gobundleconfig.T{Icon: iconFile})
-	iconSteps, cleanupWithIcon, err := bWithIcon.iconSteps()
-	if err != nil {
-		t.Fatalf("iconSteps with icon failed: %v", err)
-	}
-	if len(iconSteps) == 0 {
-		t.Error("expected steps to create the icon")
-	}
-	cleanupWithIcon()
-}
-
 func TestPrintf(t *testing.T) {
 	verboseLog.Reset()
 	verbose = false
@@ -432,7 +403,7 @@ func TestHandleGoBuildDirect(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
 	bin := filepath.Join(tmpDir, "example")
-	cfg := gobundleconfig.T{BundleConfig: buildtools.BundleConfig{Bundle: filepath.Join(tmpDir, "example.app")}}.WithDefaultsForBinary(bin)
+	cfg := gobundleconfig.T{Bundle: buildtools.Bundle{Path: filepath.Join(tmpDir, "example.app")}}.WithDefaultsForBinary(bin)
 
 	err := handleGoBuild(ctx, cfg, false, bin, []string{"-o", bin, "./testdata/example.go"})
 	if err != nil {

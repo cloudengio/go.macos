@@ -19,7 +19,7 @@ func handleGoInstall(ctx context.Context, cfg gobundleconfig.T, notarize bool, b
 	if len(installDir) == 0 {
 		return fmt.Errorf("cannot determine install directory")
 	}
-	cfg.Bundle = filepath.Join(installDir, cfg.Info.CFBundleName+".app")
+	cfg.Path = filepath.Join(installDir, cfg.Info.CFBundleName+".app")
 
 	if err := os.Remove(binary); err != nil && !os.IsNotExist(err) { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error removing original binary: %v", err)
@@ -38,7 +38,7 @@ func handleGoInstall(ctx context.Context, cfg gobundleconfig.T, notarize bool, b
 	if err := os.Remove(binary); err != nil { //nolint:gosec // G703 overly restrictive for this use case.
 		return fmt.Errorf("error removing original binary: %v", err)
 	}
-	if err := os.Symlink(b.ap.ExecutablePath(), binary); err != nil {
+	if err := os.Symlink(b.cfg.AppBundle().ExecutablePath(), binary); err != nil {
 		return fmt.Errorf("error creating symlink to signed binary: %v", err)
 	}
 	return nil

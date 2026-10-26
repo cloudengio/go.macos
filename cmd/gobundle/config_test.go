@@ -259,7 +259,8 @@ func TestCreateAndSignNotarizeValidation(t *testing.T) {
 	ctx := t.Context()
 
 	// 1. Notarize requested but no identity
-	b := newBundle(gobundleconfig.T{BundleConfig: buildtools.BundleConfig{
+	b := newBundle(gobundleconfig.T{Bundle: buildtools.Bundle{
+		Path: "test.app",
 		Notary: buildtools.NotaryConfig{
 			KeychainProfile: "my-profile",
 		},
@@ -270,10 +271,11 @@ func TestCreateAndSignNotarizeValidation(t *testing.T) {
 	}
 
 	// 2. Notarize requested with Apple Development identity
-	b = newBundle(gobundleconfig.T{BundleConfig: buildtools.BundleConfig{
-		Signing: buildtools.SigningConfig{
+	b = newBundle(gobundleconfig.T{Bundle: buildtools.Bundle{
+		Path: "test.app",
+		BundleSpec: buildtools.BundleSpec{Signing: buildtools.SigningConfig{
 			Identity: "Apple Development: Developer (TEAM123)",
-		},
+		}},
 		Notary: buildtools.NotaryConfig{
 			KeychainProfile: "my-profile",
 		},
@@ -284,10 +286,11 @@ func TestCreateAndSignNotarizeValidation(t *testing.T) {
 	}
 
 	// 3. Notarize requested with no notary credentials
-	b = newBundle(gobundleconfig.T{BundleConfig: buildtools.BundleConfig{
-		Signing: buildtools.SigningConfig{
+	b = newBundle(gobundleconfig.T{Bundle: buildtools.Bundle{
+		Path: "test.app",
+		BundleSpec: buildtools.BundleSpec{Signing: buildtools.SigningConfig{
 			Identity: "Developer ID Application: Developer (TEAM123)",
-		},
+		}},
 	}})
 	err = b.createAndSign(ctx, "testbin", true)
 	if err == nil || !strings.Contains(err.Error(), "requires notary credentials") {

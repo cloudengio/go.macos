@@ -18,9 +18,7 @@ import (
 // used to dynamically build a bundle for a Go application via gobundle run
 // or gobundle build.
 type T struct {
-	buildtools.BundleConfig `yaml:",inline"`
-	// Icon is the path of the png image to create the icon of the app from.
-	Icon string `yaml:"icon"`
+	buildtools.Bundle `yaml:",inline"`
 }
 
 const (
@@ -55,13 +53,15 @@ func DefaultConfigFiles() []string {
 // for in ConfigDir, the environment variables ConfigBundleEnvVar and
 // EnvBundleEnvVar replace the defaults, and at most one environment
 // variables file is used.
-var Spec = cmdconfig.Spec{
-	AppDir: ConfigDir,
-	EnvVars: map[cmdconfig.FileType]string{
-		cmdconfig.FileTypeYAML: ConfigBundleEnvVar,
-		cmdconfig.FileTypeEnv:  EnvBundleEnvVar,
-	},
-	FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv},
+func Spec() cmdconfig.Spec {
+	return cmdconfig.Spec{
+		Path: cmdconfig.SearchPath(ConfigDir),
+		EnvVars: map[cmdconfig.FileType]string{
+			cmdconfig.FileTypeYAML: ConfigBundleEnvVar,
+			cmdconfig.FileTypeEnv:  EnvBundleEnvVar,
+		},
+		FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv},
+	}
 }
 
 // Load returns the configuration for building a Go application bundle via
@@ -84,7 +84,7 @@ var Spec = cmdconfig.Spec{
 // been built with the wrong identity. The defaults are optional.
 func Load(ctx context.Context, ff *cmdconfig.FilesFlag, extra ...string) (T, *cmdconfig.Located, error) {
 	var cfg T
-	loc, err := ff.Locate(Spec)
+	loc, err := ff.Locate(Spec())
 	if err != nil {
 		return cfg, nil, err
 	}
@@ -101,8 +101,8 @@ func Load(ctx context.Context, ff *cmdconfig.FilesFlag, extra ...string) (T, *cm
 // specified binary. The binary should be an absolute path to the binary to be bundled.
 func (cfg T) WithDefaultsForBinary(binary string) T {
 	cfg.Info = cfg.Info.WithDefaults(binary)
-	if cfg.Bundle == "" {
-		cfg.Bundle = filepath.Join(filepath.Dir(cfg.Bundle), cfg.Info.CFBundleExecutable+".app")
+	if cfg.Path == "" {
+		cfg.Path = filepath.Join(filepath.Dir(cfg.Path), cfg.Info.CFBundleExecutable+".app")
 	}
 	return cfg
 }

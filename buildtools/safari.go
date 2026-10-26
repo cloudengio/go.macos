@@ -101,10 +101,7 @@ type ExtensionConfig struct {
 // containingAppID+c.Identifier: the usual shorthand for "this extension's
 // identifier is the containing app's plus a suffix".
 func (c ExtensionConfig) ResolveIdentifier(containingAppID string) string {
-	if strings.HasPrefix(c.Identifier, ".") {
-		return containingAppID + c.Identifier
-	}
-	return c.Identifier
+	return ResolveIdentifier(containingAppID, c.Identifier)
 }
 
 // InfoPlist returns the base Info.plist for the extension, with
@@ -170,6 +167,27 @@ func (ext SafariWebExtension) infoPlist() InfoPlist {
 
 // validate reports whether ext describes a Safari web extension that can be
 // built, given the identifier of the containing app.
+// SubBundle returns the extension as a bundle nested within the application
+// that has the identifier containingID, for use in Bundle.SubBundles: at
+// PlugIns/<Name>.appex, with the Info.plist that AddSafariWebExtension writes.
+// signing holds the entitlements and, if it is to be signed with other than
+// the identity of the application, the identity. The executable of the extension is
+// supplied when the bundle is built, see WithBinary, and the key
+// of the extension is its Path.
+func (ext SafariWebExtension) SubBundle(containingID string, signing SigningConfig) (SubBundle, error) {
+	if err := ext.validate(containingID); err != nil {
+		return SubBundle{}, err
+	}
+	info := ext.infoPlist()
+	if info.CFBundleExecutable == "" {
+		info.CFBundleExecutable = filepath.Base(ext.Executable)
+	}
+	return SubBundle{
+		Path:       filepath.Join("PlugIns", ext.Name+".appex"),
+		BundleSpec: BundleSpec{Info: info, Signing: signing},
+	}, nil
+}
+
 func (ext SafariWebExtension) validate(containingID string) error {
 	if ext.Name == "" {
 		return fmt.Errorf("name not specified for the safari web extension")

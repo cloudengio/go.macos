@@ -32,12 +32,12 @@ signing:
 
 func TestCLIConfig(t *testing.T) {
 
-	var cfg buildtools.BundleConfig
+	var cfg buildtools.Bundle
 	if err := yaml.Unmarshal([]byte(cliConfig), &cfg); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	if got, want := cfg.Bundle, "./testing.app"; got != want {
+	if got, want := cfg.Path, "./testing.app"; got != want {
 		t.Fatalf("unexpected bundle, got %q, want %q", got, want)
 	}
 	if got, want := cfg.Signing.Identity, "Apple Development: some id"; got != want {
@@ -199,14 +199,14 @@ macos_dir: "u=rwx,go=rx"
 	}
 }
 
-func TestBundleConfigPermissionsYAML(t *testing.T) {
+func TestBundlePermissionsYAML(t *testing.T) {
 	yamlNested := `
 bundle: ./testing.app
 permissions:
   executable: 0700
   macos_dir: 0755
 `
-	var cfg buildtools.BundleConfig
+	var cfg buildtools.Bundle
 	if err := yaml.Unmarshal([]byte(yamlNested), &cfg); err != nil {
 		t.Fatalf("Unmarshal failed: %v", err)
 	}
@@ -249,12 +249,12 @@ func TestCommonFlagsAndRunnerOptions(t *testing.T) {
 	}
 
 	// Load
-	var parsed buildtools.BundleConfig
+	var parsed buildtools.Bundle
 	loc, err := flags.Load(t.Context(), &parsed, "buildtoolstest")
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
-	if parsed.Bundle != "./myapp.app" || parsed.Signing.Identity != "from-env-file" {
+	if parsed.Path != "./myapp.app" || parsed.Signing.Identity != "from-env-file" {
 		t.Errorf("parsed = %+v", parsed)
 	}
 	if len(loc.YAML) != 1 || len(loc.Env) != 1 {
@@ -273,7 +273,7 @@ func TestCommonFlagsAndRunnerOptions(t *testing.T) {
 func TestCommonFlagsLoadErrors(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("HOME", t.TempDir())
-	var cfg buildtools.BundleConfig
+	var cfg buildtools.Bundle
 
 	// There is no specification to be found.
 	flags := buildtools.CommonFlags{}
@@ -295,13 +295,13 @@ func TestCommonFlagsLoadErrors(t *testing.T) {
 }
 
 func TestCommonFlagsApply(t *testing.T) {
-	cfg := buildtools.BundleConfig{Bundle: "a.app", Signing: buildtools.SigningConfig{Identity: "id"}}
+	cfg := buildtools.Bundle{Path: "a.app", Signing: buildtools.SigningConfig{Identity: "id"}}
 	buildtools.CommonFlags{}.Apply(&cfg)
-	if cfg.Bundle != "a.app" || cfg.Signing.Identity != "id" {
+	if cfg.Path != "a.app" || cfg.Signing.Identity != "id" {
 		t.Errorf("no overrides should change nothing: %+v", cfg)
 	}
 	buildtools.CommonFlags{BundlePath: "b.app", Signer: "other"}.Apply(&cfg)
-	if cfg.Bundle != "b.app" || cfg.Signing.Identity != "other" {
+	if cfg.Path != "b.app" || cfg.Signing.Identity != "other" {
 		t.Errorf("got %+v", cfg)
 	}
 }
