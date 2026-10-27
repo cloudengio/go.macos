@@ -1,0 +1,19 @@
+--- Overview
+Report undefined ${NAME} variables in buildtools YAML specs instead of silently replacing them with empty strings. Also bumps the cloudeng.io and AWS SDK dependencies.
+
+--- Key Changes
+buildtools
+  * CommonFlags.Load now locates files, expands variables and loads the YAML in separate steps (Locate, ExpandMapping, LoadFiles). An envfile.Unresolved mapping records any variables that aren't defined.
+  * Undefined variables are still replaced with empty strings, but Load now prints a warning to stderr naming the YAML files, the env file(s) and the missing variables.
+  * New CommonFlags.Undefined() []string returns a copy of the names of the undefined variables.
+  * Updated the Load doc comment and the README.
+  * TestCommonFlagsAndRunnerOptions now covers an undefined variable and checks Undefined().
+
+go.mod
+  * Bumped cloudeng.io modules: cmdutil, algo, aws, cicd, encoding, file, logging, os, security, vms, sys and types.
+  * Bumped smithy-go to v1.28.7 and the indirect aws-sdk-go-v2 dependencies.
+
+--- Breaking Changes
+None. Load now writes a warning to stderr when a spec uses undefined variables.
+
+ Generated with Claude Code (https://claude.com/claude-code)
