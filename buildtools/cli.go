@@ -5,17 +5,20 @@
 package buildtools
 
 import (
+	"cmp"
 	"context"
 	"flag"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/cmdutil/cmdtypes"
 	"cloudeng.io/cmdutil/cmdyaml"
+	"cloudeng.io/cmdutil/envfile"
 	"cloudeng.io/cmdutil/flags"
 	"gopkg.in/yaml.v3"
 )
@@ -33,7 +36,8 @@ type CommonFlags struct {
 	// ${NAME} references in them are expanded from, see Load.
 	Config cmdconfig.FilesFlag `subcmd:"config,'spec.yaml','comma separated list of the YAML build specification files and of the file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults'"`
 
-	files []string // the YAML files that Load read.
+	files     []string // the YAML files that Load read.
+	undefined []string // the variables they refer to that are not defined.
 }
 
 // RegisterFlagsOrDie registers a struct that contains an instance of CommonFlags with the provided
@@ -72,12 +76,22 @@ func (f CommonFlags) StepRunnerOptions() []StepRunnerOption {
 // current directory and the user's configuration directories for appDir, see
 // cmdconfig.SearchPath, and parses the YAML files into cfg, expanding ${NAME}
 // references from the environment and the environment variables file; one that
-// is not defined is replaced by an empty string. Unknown fields are ignored.
+// is not defined is replaced by an empty string, and is reported, on stderr and
+// by Undefined, since it is more likely to be a mistake, such as a missing
+// environment variables file, than intended. Unknown fields are ignored.
 // It is an error for there to be no YAML file.
 func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdconfig.Located, error) {
 	spec := cmdconfig.Spec{Path: cmdconfig.SearchPath(appDir), FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv}}
-	loc, err := cmdconfig.Load(ctx, cfg, &f.Config, spec, cmdyaml.WithStrictFields(false), cmdyaml.WithUnresolvedEmpty())
+	loc, err := f.Config.Locate(spec)
 	if err != nil {
+		return nil, err
+	}
+	var unresolved envfile.Unresolved
+	mapping, err := loc.ExpandMapping(unresolved.Mapping)
+	if err != nil {
+		return loc, err
+	}
+	if err := cmdconfig.LoadFiles(ctx, cfg, loc, cmdyaml.WithStrictFields(false), cmdyaml.WithUnresolvedEmpty(), cmdyaml.WithExpandMapping(mapping)); err != nil {
 		return loc, err
 	}
 	if len(loc.YAML) == 0 {
@@ -85,7 +99,19 @@ func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdcon
 			strings.Join(f.Config.Files(cmdconfig.FileTypeYAML, false), ", "), strings.Join(filepath.SplitList(loc.SearchPath), ", "))
 	}
 	f.files = loc.YAML
+	f.undefined = unresolved.Names()
+	if len(f.undefined) > 0 {
+		fmt.Fprintf(os.Stderr, "warning: these variables, used in %v, are not defined, in %v or the environment, and are empty: %v\n",
+			strings.Join(loc.YAML, ", "), cmp.Or(strings.Join(loc.Env, ", "), "an environment variables file"), strings.Join(f.undefined, ", "))
+	}
 	return loc, nil
+}
+
+// Undefined returns the names of the variables that the specification read
+// by Load refers to, but that are not defined, and so were replaced by empty
+// strings.
+func (f CommonFlags) Undefined() []string {
+	return slices.Clone(f.undefined)
 }
 
 // Apply applies the overrides given by the BundlePath and Signer flags to cfg.

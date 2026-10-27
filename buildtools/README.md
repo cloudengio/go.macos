@@ -805,8 +805,10 @@ Load locates the files named by the Config flag, searching for them in the
 current directory and the user's configuration directories for appDir,
 see cmdconfig.SearchPath, and parses the YAML files into cfg, expanding
 ${NAME} references from the environment and the environment variables file;
-one that is not defined is replaced by an empty string. Unknown fields are
-ignored. It is an error for there to be no YAML file.
+one that is not defined is replaced by an empty string, and is reported,
+on stderr and by Undefined, since it is more likely to be a mistake,
+such as a missing environment variables file, than intended. Unknown fields
+are ignored. It is an error for there to be no YAML file.
 
 
 ```go
@@ -825,6 +827,14 @@ with a non-zero status if any of the steps failed.
 func (f CommonFlags) StepRunnerOptions() []StepRunnerOption
 ```
 StepRunnerOptions returns options for the StepRunner based on the flags.
+
+
+```go
+func (f CommonFlags) Undefined() []string
+```
+Undefined returns the names of the variables that the specification read
+by Load refers to, but that are not defined, and so were replaced by empty
+strings.
 
 
 

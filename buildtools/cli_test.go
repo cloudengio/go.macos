@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -222,7 +223,7 @@ func TestCommonFlagsAndRunnerOptions(t *testing.T) {
 	tempDir := t.TempDir()
 	cfgFile := filepath.Join(tempDir, "config.yaml")
 	envFile := filepath.Join(tempDir, "vars.env")
-	if err := os.WriteFile(cfgFile, []byte("bundle: ./myapp.app\nsigning:\n  identity: \"${CLI_TEST_ID}\"\n"), 0600); err != nil {
+	if err := os.WriteFile(cfgFile, []byte("bundle: ./myapp${CLI_TEST_UNDEFINED}.app\nsigning:\n  identity: \"${CLI_TEST_ID}\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(envFile, []byte("CLI_TEST_ID=from-env-file\n"), 0600); err != nil {
@@ -259,6 +260,9 @@ func TestCommonFlagsAndRunnerOptions(t *testing.T) {
 	}
 	if len(loc.YAML) != 1 || len(loc.Env) != 1 {
 		t.Errorf("loc = %+v", loc)
+	}
+	if got, want := flags.Undefined(), []string{"CLI_TEST_UNDEFINED"}; !slices.Equal(got, want) {
+		t.Errorf("Undefined() = %v, want %v", got, want)
 	}
 
 	// PrintResult
