@@ -1,0 +1,25 @@
+--- Overview
+This PR adds git-based bundle versioning and relative symlink support to buildtools. It also makes build specification loading stricter: the --config flag no longer has a default, and unknown YAML fields are rejected.
+
+--- Key Changes
+buildtools/git.go
+  * New Version type with Short, Build (<short>+<commit>[-dirty]), Commit, BuildTime (UTC) and Dirty, for CFBundleShortVersionString and CFBundleVersion.
+  * New Git.Version(ctx, runner, short) returns the HEAD commit and reports whether the working tree has uncommitted changes. The caller decides whether a dirty tree is acceptable.
+
+buildtools/file.go
+  * New SymlinkRelative(target, link) Step creates the link using a path relative to the link's directory, via ln -s -f -n. With -n, an existing link to a directory is replaced instead of a new link being created inside that directory.
+
+buildtools/cli.go
+  * CommonFlags.Config no longer defaults to spec.yaml. A tool can supply its own defaults by calling Config.SetDefaults before registering flags.
+  * Load returns an error if no YAML file is given.
+  * Load now parses strictly: misspelt or misplaced fields are errors (previously WithStrictFields(false)).
+
+Tests / docs
+  * Added tests for Git.Version (clean, dirty, outside a repo), SymlinkRelative (relative path, replacement, empty args), tool-supplied Config defaults, and strict parsing.
+  * Updated README.md to match.
+
+--- Breaking Changes
+  * --config no longer defaults to spec.yaml. Tools that relied on this must call Config.SetDefaults, or users must pass --config.
+  * YAML build specifications with unknown fields now fail to load instead of having those fields ignored.
+
+ Generated with Claude Code (https://claude.com/claude-code)
