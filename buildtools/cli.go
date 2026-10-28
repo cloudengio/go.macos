@@ -33,8 +33,11 @@ type CommonFlags struct {
 	Verbose    bool   `subcmd:"verbose,false,'if set, print verbose output'"`
 	// Config holds the build specification files: YAML files, applied in order,
 	// and a file of NAME=VALUE environment variable definitions (.env) that
-	// ${NAME} references in them are expanded from, see Load.
-	Config cmdconfig.FilesFlag `subcmd:"config,'spec.yaml','comma separated list of the YAML build specification files and of the file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults'"`
+	// ${NAME} references in them are expanded from, see Load. It has no
+	// default, but a tool may give it some, by calling its SetDefaults before
+	// its flags are registered, since a FilesFlag's defaults are used for a
+	// flag whose struct tag does not specify one.
+	Config cmdconfig.FilesFlag `subcmd:"config,,'comma separated list of the YAML build specification files and of the file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults'"`
 
 	files     []string // the YAML files that Load read.
 	undefined []string // the variables they refer to that are not defined.
@@ -78,9 +81,14 @@ func (f CommonFlags) StepRunnerOptions() []StepRunnerOption {
 // references from the environment and the environment variables file; one that
 // is not defined is replaced by an empty string, and is reported, on stderr and
 // by Undefined, since it is more likely to be a mistake, such as a missing
-// environment variables file, than intended. Unknown fields are ignored.
-// It is an error for there to be no YAML file.
+// environment variables file, than intended. Parsing is strict, so that a
+// misspelt or misplaced field is an error rather than silently ignored. It is
+// an error for no YAML file to be given, by the flag or its defaults, or for
+// none of those given to be found.
 func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdconfig.Located, error) {
+	if len(f.Config.Files(cmdconfig.FileTypeYAML, false)) == 0 {
+		return nil, fmt.Errorf("no build specification given: use --config to name its YAML files")
+	}
 	spec := cmdconfig.Spec{Path: cmdconfig.SearchPath(appDir), FirstOnly: []cmdconfig.FileType{cmdconfig.FileTypeEnv}}
 	loc, err := f.Config.Locate(spec)
 	if err != nil {
@@ -91,7 +99,7 @@ func (f *CommonFlags) Load(ctx context.Context, cfg any, appDir string) (*cmdcon
 	if err != nil {
 		return loc, err
 	}
-	if err := cmdconfig.LoadFiles(ctx, cfg, loc, cmdyaml.WithStrictFields(false), cmdyaml.WithUnresolvedEmpty(), cmdyaml.WithExpandMapping(mapping)); err != nil {
+	if err := cmdconfig.LoadFiles(ctx, cfg, loc, cmdyaml.WithUnresolvedEmpty(), cmdyaml.WithExpandMapping(mapping)); err != nil {
 		return loc, err
 	}
 	if len(loc.YAML) == 0 {

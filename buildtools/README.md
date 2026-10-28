@@ -776,8 +776,11 @@ type CommonFlags struct {
 	Verbose    bool   `subcmd:"verbose,false,'if set, print verbose output'"`
 	// Config holds the build specification files: YAML files, applied in order,
 	// and a file of NAME=VALUE environment variable definitions (.env) that
-	// ${NAME} references in them are expanded from, see Load.
-	Config cmdconfig.FilesFlag `subcmd:"config,'spec.yaml','comma separated list of the YAML build specification files and of the file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults'"`
+	// ${NAME} references in them are expanded from, see Load. It has no
+	// default, but a tool may give it some, by calling its SetDefaults before
+	// its flags are registered, since a FilesFlag's defaults are used for a
+	// flag whose struct tag does not specify one.
+	Config cmdconfig.FilesFlag `subcmd:"config,,'comma separated list of the YAML build specification files and of the file of NAME=VALUE environment variable definitions (.env) for use in them, replacing the defaults'"`
 	// contains filtered or unexported fields
 }
 ```
@@ -806,9 +809,11 @@ current directory and the user's configuration directories for appDir,
 see cmdconfig.SearchPath, and parses the YAML files into cfg, expanding
 ${NAME} references from the environment and the environment variables file;
 one that is not defined is replaced by an empty string, and is reported,
-on stderr and by Undefined, since it is more likely to be a mistake,
-such as a missing environment variables file, than intended. Unknown fields
-are ignored. It is an error for there to be no YAML file.
+on stderr and by Undefined, since it is more likely to be a mistake, such as
+a missing environment variables file, than intended. Parsing is strict, so
+that a misspelt or misplaced field is an error rather than silently ignored.
+It is an error for no YAML file to be given, by the flag or its defaults,
+or for none of those given to be found.
 
 
 ```go
@@ -1013,6 +1018,15 @@ func (g Git) Hash(ctx context.Context, cmdRunner *CommandRunner, branch string, 
 ```go
 func (g Git) ReplaceBranch(version, buildID string) string
 ```
+
+
+```go
+func (g Git) Version(ctx context.Context, cmdRunner *CommandRunner, short string) (Version, error)
+```
+Version returns the version of a bundle built from the repository's current
+tree, whose release version is short: its HEAD commit, and whether it has
+uncommitted changes. It is for the caller to decide whether a dirty tree is
+acceptable.
 
 
 
@@ -2050,6 +2064,16 @@ link using ln -s -f.
 
 
 ```go
+func SymlinkRelative(target, link string) Step
+```
+SymlinkRelative returns a Step that creates a symbolic link at link to
+target, by a path relative to link's directory, so that the link remains
+valid if the directory that contains both is moved, using ln -s -f -n:
+the -n replaces an existing link to a directory, rather than creating the
+new link within the directory that it points to.
+
+
+```go
 func WriteFile(data []byte, perm os.FileMode, elems ...string) Step
 ```
 WriteFile returns a Step that writes data to the specified path with the
@@ -2268,6 +2292,29 @@ ExecutablePath returns the path to the specified executable within the swift
 build tree.
 
 
+
+
+### Type Version
+```go
+type Version struct {
+	// Short is the human-readable release version, for
+	// CFBundleShortVersionString.
+	Short string
+	// Build is Short with the abbreviated commit appended, as
+	// <short>+<commit>, and -dirty if the tree has uncommitted changes, for
+	// CFBundleVersion.
+	Build string
+	// Commit is the full hash of the commit that HEAD refers to.
+	Commit string
+	// BuildTime is when the version was determined, in UTC.
+	BuildTime time.Time
+	// Dirty reports whether the tree has uncommitted changes, in which case
+	// the bundle does not match Commit.
+	Dirty bool
+}
+```
+Version is the version of a bundle built from a git repository, see
+Git.Version.
 
 
 ### Type XPCServicePlist

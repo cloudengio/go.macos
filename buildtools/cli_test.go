@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/macos/buildtools"
 	"gopkg.in/yaml.v3"
 )
@@ -279,8 +280,14 @@ func TestCommonFlagsLoadErrors(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var cfg buildtools.Bundle
 
-	// There is no specification to be found.
+	// There is no specification given.
 	flags := buildtools.CommonFlags{}
+	if _, err := flags.Load(t.Context(), &cfg, "buildtoolstest"); err == nil || !strings.Contains(err.Error(), "no build specification given") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// There is no specification to be found.
+	flags = buildtools.CommonFlags{}
 	if err := flags.Config.SetDefault("spec.yaml"); err != nil {
 		t.Fatal(err)
 	}
@@ -295,6 +302,39 @@ func TestCommonFlagsLoadErrors(t *testing.T) {
 	}
 	if _, err := flags.Load(t.Context(), &cfg, "buildtoolstest"); err == nil || !strings.Contains(err.Error(), "named.yaml") {
 		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Parsing is strict.
+	if err := os.WriteFile("unknown.yaml", []byte("bundle: x.app\nno_such_field: 1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	flags = buildtools.CommonFlags{}
+	if err := flags.Config.Set("unknown.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := flags.Load(t.Context(), &cfg, "buildtoolstest"); err == nil || !strings.Contains(err.Error(), "no_such_field") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// TestCommonFlagsToolDefaults checks that a tool can give the Config flag
+// defaults of its own, by setting them before the flags are registered.
+func TestCommonFlagsToolDefaults(t *testing.T) {
+	var flags buildtools.CommonFlags
+	flags.Config.SetDefaults("tool.yaml", "tool.env")
+	flagSet := flag.NewFlagSet("test", flag.ContinueOnError)
+	buildtools.RegisterFlagsOrDie(&flags, flagSet)
+	if err := flagSet.Parse(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := flags.Config.Files(cmdconfig.FileTypeYAML, false); !slices.Equal(got, []string{"tool.yaml"}) {
+		t.Errorf("defaults: got %v", got)
+	}
+	if err := flagSet.Parse([]string{"--config=other.yaml"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := flags.Config.Files(cmdconfig.FileTypeYAML, false); !slices.Equal(got, []string{"other.yaml"}) {
+		t.Errorf("set: got %v", got)
 	}
 }
 
