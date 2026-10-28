@@ -343,6 +343,44 @@ func TestIsValidIconSetDir(t *testing.T) {
 	}
 }
 
+func TestSymlinkRelative(t *testing.T) {
+	tempDir := t.TempDir()
+	runner := buildtools.NewCommandRunner()
+	ctx := t.Context()
+
+	for _, dir := range []string{"a/target", "a/other", "links"} {
+		if err := os.MkdirAll(filepath.Join(tempDir, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(tempDir, "links", "link")
+	if _, err := buildtools.SymlinkRelative(filepath.Join(tempDir, "a", "target"), link).Run(ctx, runner); err != nil {
+		t.Fatalf("SymlinkRelative failed: %v", err)
+	}
+	if got, err := os.Readlink(link); err != nil || got != filepath.Join("..", "a", "target") {
+		t.Errorf("Readlink = %q, %v, want a relative path", got, err)
+	}
+
+	// Replacing a link to a directory replaces the link, rather than making
+	// one within the directory.
+	if _, err := buildtools.SymlinkRelative(filepath.Join(tempDir, "a", "other"), link).Run(ctx, runner); err != nil {
+		t.Fatalf("SymlinkRelative replace failed: %v", err)
+	}
+	if got, err := os.Readlink(link); err != nil || got != filepath.Join("..", "a", "other") {
+		t.Errorf("Readlink = %q, %v, want the replacement", got, err)
+	}
+	if _, err := os.Lstat(filepath.Join(tempDir, "a", "target", "target")); err == nil {
+		t.Error("a link was made within the directory the old link points to")
+	}
+
+	if _, err := buildtools.SymlinkRelative("", link).Run(ctx, runner); err == nil {
+		t.Error("expected empty target to fail")
+	}
+	if _, err := buildtools.SymlinkRelative(link, "").Run(ctx, runner); err == nil {
+		t.Error("expected empty link to fail")
+	}
+}
+
 func TestSymlink(t *testing.T) {
 	tempDir := t.TempDir()
 	runner := buildtools.NewCommandRunner()

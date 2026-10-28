@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"cloudeng.io/macos/buildtools"
 )
@@ -211,5 +212,60 @@ func TestGitHash(t *testing.T) {
 	hashEmpty := strings.TrimSpace(resultEmpty.Output())
 	if hashEmpty != hash {
 		t.Errorf("expected empty branch hash %q to equal HEAD hash %q", hashEmpty, hash)
+	}
+}
+
+// commitAll initializes a repository in dir, with a file in sub, a
+// subdirectory, and commits it.
+func commitAll(t *testing.T, runner *buildtools.CommandRunner, dir, sub string) {
+	t.Helper()
+	ctx := buildtools.ContextWithCWD(t.Context(), dir)
+	initGitRepo(ctx, t, runner, dir)
+	if err := os.MkdirAll(sub, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "a.txt"), []byte("a"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "."}, {"commit", "-m", "initial"}} {
+		if _, err := runner.Run(ctx, "git", args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGitVersion(t *testing.T) {
+	tempDir := t.TempDir()
+	runner := buildtools.NewCommandRunner()
+	sub := filepath.Join(tempDir, "sub")
+	commitAll(t, runner, tempDir, sub)
+
+	// A subdirectory of the repository will do.
+	git := buildtools.NewGit(sub)
+	v, err := git.Version(t.Context(), runner, "1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Short != "1.2.3" || len(v.Commit) != 40 || v.Dirty || v.BuildTime.IsZero() || v.BuildTime.Location() != time.UTC {
+		t.Errorf("clean: got %+v", v)
+	}
+	if want := "1.2.3+" + v.Commit[:8]; v.Build != want {
+		t.Errorf("clean: build %q, want %q", v.Build, want)
+	}
+	verifyHexString(t, v.Commit)
+
+	if err := os.WriteFile(filepath.Join(tempDir, "b.txt"), []byte("b"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err := git.Version(t.Context(), runner, "1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dirty.Dirty || dirty.Commit != v.Commit || dirty.Build != v.Build+"-dirty" {
+		t.Errorf("dirty: got %+v", dirty)
+	}
+
+	if _, err := buildtools.NewGit(t.TempDir()).Version(t.Context(), runner, "1.2.3"); err == nil {
+		t.Error("expected an error for a directory that is not in a repository")
 	}
 }

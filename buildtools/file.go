@@ -106,6 +106,37 @@ func Symlink(target, link string) Step {
 	})
 }
 
+// SymlinkRelative returns a Step that creates a symbolic link at link to
+// target, by a path relative to link's directory, so that the link remains
+// valid if the directory that contains both is moved, using ln -s -f -n: the
+// -n replaces an existing link to a directory, rather than creating the new
+// link within the directory that it points to.
+func SymlinkRelative(target, link string) Step {
+	if target == "" || link == "" {
+		return ErrorStep(fmt.Errorf("target and link must not be empty"), "ln", "-s", "-f", "-n")
+	}
+	return StepFunc(func(ctx context.Context, cmdRunner *CommandRunner) (StepResult, error) {
+		rel, err := relativeTo(filepath.Dir(link), target)
+		if err != nil {
+			return NewStepResult("ln", []string{"-s", "-f", "-n", target, link}, nil, err), err
+		}
+		return cmdRunner.Run(ctx, "ln", "-s", "-f", "-n", rel, link)
+	})
+}
+
+// relativeTo returns target as a path relative to dir.
+func relativeTo(dir, target string) (string, error) {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", err
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Rel(absDir, absTarget)
+}
+
 // chmodBits returns the traditional UNIX permission, setuid, setgid, and sticky
 // bits from perm formatted for chmod, masking out any file type bits (such as
 // os.ModeDir or os.ModeSymlink).
