@@ -1,0 +1,19 @@
+--- Overview
+Adds macosutils support for finding the app bundle that encloses the running executable and reading values from that bundle's Info.plist.
+
+--- Key Changes
+  * macosutils
+    * EnclosingBundle() returns the app bundle that contains the running executable. The executable can be in Contents/MacOS or in Contents/Helpers. If it is in neither, the function returns the new ErrNotInBundle error.
+    * ReadBundleInfo(bundle) parses Contents/Info.plist in both text and binary formats, using howett.net/plist. It works for app bundles and for other bundles such as .appex.
+    * BundleInfo has three methods:
+      * Path() returns the path of the plist.
+      * Value(key) returns the raw value and whether the key exists.
+      * String(key) returns a string value. It returns an error if the key is missing or the value isn't a string.
+    * Tests cover text, binary, malformed and missing plists. To test EnclosingBundle, the test binary copies itself into Contents/MacOS and Contents/Helpers of a temporary bundle and re-runs from each location.
+    * The README now documents the new API.
+  * go.mod: Bumps the indirect dependencies aws-sdk-go-v2/service/ec2 to v1.342.0 and service/kms to v1.62.1, and adds golang.org/x/net v0.62.0 as an indirect dependency.
+
+--- Breaking Changes
+None
+
+ Generated with Claude Code (https://claude.com/claude-code)
