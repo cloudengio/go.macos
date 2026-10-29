@@ -15,9 +15,30 @@ ErrAlreadyLaunched = errors.New("application already launched")
 
 ```
 
+### ErrNotInBundle
+```go
+ErrNotInBundle = errors.New("not in an app bundle")
+
+```
+ErrNotInBundle is returned by EnclosingBundle for an executable that is not
+in an app bundle.
+
 
 
 ## Functions
+### Func EnclosingBundle
+```go
+func EnclosingBundle() (string, error)
+```
+EnclosingBundle returns the app bundle that contains the running executable,
+either as its main executable, in Contents/MacOS, or as a helper,
+in Contents/Helpers, which is where a bundle keeps the other executables
+that it runs, such as native messaging hosts and daemons. It returns
+ErrNotInBundle if the executable is in neither.
+
+It inherits the caveat documented on ProcessInBundle for a sandboxed process
+launched with a relative path.
+
 ### Func ExecutablePath
 ```go
 func ExecutablePath() (string, error)
@@ -162,6 +183,49 @@ it returns nil, nil.
 
 
 ## Types
+### Type BundleInfo
+```go
+type BundleInfo struct {
+	// contains filtered or unexported fields
+}
+```
+BundleInfo is the Info.plist of an app bundle, read and parsed once, so that
+any number of its values can be looked up.
+
+### Functions
+
+```go
+func ReadBundleInfo(bundle string) (*BundleInfo, error)
+```
+ReadBundleInfo reads and parses the Contents/Info.plist of the app bundle,
+or other bundle, such as an .appex, at bundle. Text and binary property
+lists are both read.
+
+
+
+### Methods
+
+```go
+func (b *BundleInfo) Path() string
+```
+Path returns the path of the Info.plist.
+
+
+```go
+func (b *BundleInfo) String(key string) (string, error)
+```
+String returns the value of key, which must be a string. It is an error for
+the key to be absent or not a string; an empty string is returned as is.
+
+
+```go
+func (b *BundleInfo) Value(key string) (any, bool)
+```
+Value returns the value of key, and whether there is one.
+
+
+
+
 ### Type LaunchOption
 ```go
 type LaunchOption func(o *launchOptions)
