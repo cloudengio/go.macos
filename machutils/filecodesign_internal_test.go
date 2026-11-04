@@ -104,3 +104,40 @@ func TestVerifyFileCodeSignatureInvalidRequirement(t *testing.T) {
 		t.Errorf("got %v, want it to wrap ErrInvalidRequirement", err)
 	}
 }
+
+func TestRequirementVerifyFile_LifecycleAndBundle(t *testing.T) {
+	var nilReq *Requirement
+	if err := nilReq.VerifyFile("/bin/ls"); !errors.Is(err, ErrInvalidRequirement) {
+		t.Errorf("nil requirement: got %v, want ErrInvalidRequirement", err)
+	}
+
+	req, err := NewRequirement(`anchor apple`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer req.Close()
+
+	if err := req.VerifyFile("/bin/ls"); err != nil {
+		t.Errorf("verify /bin/ls: %v", err)
+	}
+	if err := req.VerifyFile("/bin/ps"); err != nil {
+		t.Errorf("verify /bin/ps: %v", err)
+	}
+
+	for _, bundle := range []string{
+		"/System/Applications/Calculator.app",
+		"/System/Applications/TextEdit.app",
+	} {
+		if _, err := os.Stat(bundle); err == nil {
+			if err := req.VerifyFile(bundle); err != nil {
+				t.Errorf("verify bundle %s: %v", bundle, err)
+			}
+			break
+		}
+	}
+
+	req.Close()
+	if err := req.VerifyFile("/bin/ls"); !errors.Is(err, ErrInvalidRequirement) {
+		t.Errorf("closed requirement: got %v, want ErrInvalidRequirement", err)
+	}
+}

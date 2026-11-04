@@ -66,6 +66,9 @@ static char *copySecErrorMessage(OSStatus status) {
 // which matches the exact process instance including its kernel pidversion
 // to prevent PID reuse. Otherwise, it falls back to kSecGuestAttributePid.
 static OSStatus verifyGuestCode(const void *auditToken, size_t tokenLen, pid_t pid, SecRequirementRef requirement, char **outErrMsg) {
+	if (outErrMsg != NULL) {
+		*outErrMsg = NULL;
+	}
 	CFDictionaryRef attrs = NULL;
 	if (auditToken != NULL && tokenLen > 0) {
 		CFDataRef tokenData = CFDataCreate(kCFAllocatorDefault, (const UInt8 *)auditToken, (CFIndex)tokenLen);
@@ -120,6 +123,9 @@ static OSStatus verifyGuestCode(const void *auditToken, size_t tokenLen, pid_t p
 // on disk, including any code nested within it, against requirement using
 // SecStaticCodeCheckValidityWithErrors.
 static OSStatus verifyStaticCode(const char *path, SecRequirementRef requirement, char **outErrMsg) {
+	if (outErrMsg != NULL) {
+		*outErrMsg = NULL;
+	}
 	CFURLRef url = CFURLCreateFromFileSystemRepresentation(kCFAllocatorDefault,
 		(const UInt8 *)path, (CFIndex)strlen(path), false);
 	if (url == NULL) {
@@ -244,6 +250,7 @@ func NewRequirement(requirement string) (*Requirement, error) {
 
 // Close releases the underlying SecRequirementRef.
 func (r *Requirement) Close() {
+	runtime.SetFinalizer(r, nil)
 	if uintptr(r.req) != 0 {
 		C.CFRelease(C.CFTypeRef(r.req))
 		r.req = 0
@@ -253,6 +260,18 @@ func (r *Requirement) Close() {
 // String returns the requirement string from which r was compiled.
 func (r *Requirement) String() string {
 	return r.str
+}
+
+func secErrorMessage(cErrMsg *C.char, status C.OSStatus) string {
+	if cErrMsg != nil {
+		defer C.free(unsafe.Pointer(cErrMsg))
+		return C.GoString(cErrMsg)
+	}
+	if msg := C.copySecErrorMessage(status); msg != nil {
+		defer C.free(unsafe.Pointer(msg))
+		return C.GoString(msg)
+	}
+	return ""
 }
 
 // Verify verifies that the process connected via conn satisfies this requirement.
@@ -265,6 +284,7 @@ func (r *Requirement) Verify(conn *net.UnixConn) error {
 	if r == nil || uintptr(r.req) == 0 {
 		return fmt.Errorf("%w: uninitialized requirement", ErrInvalidRequirement)
 	}
+	defer runtime.KeepAlive(r)
 
 	token, hasToken := peerAuditToken(conn)
 	var pid int32
@@ -288,16 +308,7 @@ func (r *Requirement) Verify(conn *net.UnixConn) error {
 		return nil
 	}
 
-	var errMsg string
-	if cErrMsg != nil {
-		errMsg = C.GoString(cErrMsg)
-		C.free(unsafe.Pointer(cErrMsg))
-	} else if msg := C.copySecErrorMessage(status); msg != nil {
-		errMsg = C.GoString(msg)
-		C.free(unsafe.Pointer(msg))
-	}
-
-	if errMsg != "" {
+	if errMsg := secErrorMessage(cErrMsg, status); errMsg != "" {
 		return fmt.Errorf("%w: pid %d: %s (OSStatus %d)", ErrPeerCodeSignatureInvalid, pid, errMsg, int(status))
 	}
 	return fmt.Errorf("%w: pid %d: OSStatus %d", ErrPeerCodeSignatureInvalid, pid, int(status))
@@ -314,6 +325,8 @@ func (r *Requirement) VerifyFile(path string) error {
 	if r == nil || uintptr(r.req) == 0 {
 		return fmt.Errorf("%w: uninitialized requirement", ErrInvalidRequirement)
 	}
+	defer runtime.KeepAlive(r)
+
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
@@ -323,19 +336,10 @@ func (r *Requirement) VerifyFile(path string) error {
 		return nil
 	}
 
-	var errMsg string
-	if cErrMsg != nil {
-		errMsg = C.GoString(cErrMsg)
-		C.free(unsafe.Pointer(cErrMsg))
-	} else if msg := C.copySecErrorMessage(status); msg != nil {
-		errMsg = C.GoString(msg)
-		C.free(unsafe.Pointer(msg))
+	if errMsg := secErrorMessage(cErrMsg, status); errMsg != "" {
+		return fmt.Errorf("%w: %q: %s (OSStatus %d)", ErrFileCodeSignatureInvalid, path, errMsg, int(status))
 	}
-
-	if errMsg != "" {
-		return fmt.Errorf("%w: %v: %s (OSStatus %d)", ErrFileCodeSignatureInvalid, path, errMsg, int(status))
-	}
-	return fmt.Errorf("%w: %v: OSStatus %d", ErrFileCodeSignatureInvalid, path, int(status))
+	return fmt.Errorf("%w: %q: OSStatus %d", ErrFileCodeSignatureInvalid, path, int(status))
 }
 
 // VerifyPeerCodeSignature verifies that the process connected via conn, a
