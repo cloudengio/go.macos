@@ -20,6 +20,9 @@ func TestNoCgoStubs(t *testing.T) {
 	if err := machutils.VerifyPeerCodeSignature(nil, `identifier "test"`); !errors.Is(err, machutils.ErrCgoDisabled) {
 		t.Errorf("VerifyPeerCodeSignature got %v, want ErrCgoDisabled", err)
 	}
+	if err := machutils.VerifyFileCodeSignature("/bin/ls", `identifier "test"`); !errors.Is(err, machutils.ErrCgoDisabled) {
+		t.Errorf("VerifyFileCodeSignature got %v, want ErrCgoDisabled", err)
+	}
 	if _, err := machutils.SelfRequirementString(); !errors.Is(err, machutils.ErrCgoDisabled) {
 		t.Errorf("SelfRequirementString got %v, want ErrCgoDisabled", err)
 	}
