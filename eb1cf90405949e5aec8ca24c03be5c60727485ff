@@ -1,0 +1,24 @@
+--- Overview
+Adds on-disk code signature verification to machutils, so that an executable or bundle can be checked before it is run. Also includes small lifetime and error-handling fixes to the existing requirement code.
+
+--- Key Changes
+machutils: file verification
+  * Add VerifyFileCodeSignature(path, requirement) and Requirement.VerifyFile(path), which check that code is validly signed, unmodified and satisfies the requirement.
+  * Implement the check with SecStaticCodeCheckValidityWithErrors, using strict validation and checking expiration, all architectures and nested code.
+  * Add ErrFileCodeSignatureInvalid, returned for unreadable, unsigned, modified or non-matching code. Invalid requirements return ErrInvalidRequirement.
+  * Add non-cgo stubs that return ErrCgoDisabled.
+
+machutils: existing requirement code
+  * Requirement.Close now clears the finalizer.
+  * Requirement.Verify now keeps the requirement alive for the duration of the call using runtime.KeepAlive.
+  * verifyGuestCode now initializes outErrMsg to NULL.
+  * Move error message extraction into a shared secErrorMessage helper.
+
+Tests and docs
+  * Add tests for self-verification, requirement mismatches, modified, unsigned and missing files, Apple binaries and bundles, invalid requirements, and the nil and closed Requirement lifecycle.
+  * Extend the non-cgo stub test and update README.md.
+
+--- Breaking Changes
+None
+
+ Generated with Claude Code (https://claude.com/claude-code)
