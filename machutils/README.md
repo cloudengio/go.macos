@@ -29,7 +29,10 @@ entitlements of the running process cannot be retrieved from the kernel.
 
 ### ErrFailedToRetrieveExecutablePath
 ```go
-ErrFailedToRetrieveExecutablePath = errors.New("failed to retrieve the executable path from the kernel")
+ErrFailedToRetrieveExecutablePath = errors.
+	New(
+		"failed to retrieve the executable path from the kernel",
+	)
 
 ```
 ErrFailedToRetrieveExecutablePath is returned when the path of the running
@@ -50,6 +53,16 @@ ErrFailedToRetrievePeerPID = errors.New("failed to retrieve peer process ID from
 ```
 ErrFailedToRetrievePeerPID is returned when the process ID of the peer of a
 Unix domain socket connection cannot be retrieved from the kernel.
+
+### ErrFileCodeSignatureInvalid
+```go
+ErrFileCodeSignatureInvalid = errors.New("code signature of file is not valid or does not satisfy the requirement")
+
+```
+ErrFileCodeSignatureInvalid is returned by VerifyFileCodeSignature or
+Requirement.VerifyFile when the code at the given path cannot be read,
+is unsigned, has been modified since it was signed, or does not satisfy the
+given requirement.
 
 ### ErrInvalidRequirement
 ```go
@@ -186,6 +199,22 @@ requirement string to a child process it spawns, so that child can verify
 the parent back over the same connection, making the check mutual rather
 than one-directional.
 
+### Func VerifyFileCodeSignature
+```go
+func VerifyFileCodeSignature(path, requirement string) error
+```
+VerifyFileCodeSignature verifies that the code at path, an executable or
+a bundle, is validly signed, has not been modified since it was signed,
+and satisfies requirement, a code signing requirement string as for
+VerifyPeerCodeSignature. Code nested within a bundle is verified too.
+
+It is the check to make before executing a binary that must be trusted,
+since checking the process once it is running, with VerifyPeerCodeSignature,
+is too late to keep untrusted code from running. The file can still be
+replaced between this check and its execution, so a caller that can should
+also verify the running process, e.g. with VerifyPeerCodeSignature over a
+socketpair shared with it.
+
 ### Func VerifyPeerCodeSignature
 ```go
 func VerifyPeerCodeSignature(conn *net.UnixConn, requirement string) error
@@ -257,6 +286,13 @@ func (r *Requirement) Verify(conn *net.UnixConn) error
 ```
 Verify verifies that the process connected via conn satisfies this
 requirement.
+
+
+```go
+func (r *Requirement) VerifyFile(path string) error
+```
+VerifyFile verifies that the code at path, an executable or a bundle,
+is validly signed, unmodified on disk, and satisfies this requirement.
 
 
 

@@ -12,6 +12,7 @@ package machutils
 #include <Security/Security.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdlib.h>
+#include <string.h>
 
 // compileRequirement compiles requirementStr into a SecRequirementRef.
 // Returns errSecSuccess on success and sets *outReq.
@@ -115,6 +116,41 @@ static OSStatus verifyGuestCode(const void *auditToken, size_t tokenLen, pid_t p
 	return status;
 }
 
+// verifyStaticCode validates the code at path, an executable or a bundle,
+// on disk, including any code nested within it, against requirement using
+// SecStaticCodeCheckValidityWithErrors.
+static OSStatus verifyStaticCode(const char *path, SecRequirementRef requirement, char **outErrMsg) {
+	CFURLRef url = CFURLCreateFromFileSystemRepresentation(kCFAllocatorDefault,
+		(const UInt8 *)path, (CFIndex)strlen(path), false);
+	if (url == NULL) {
+		return errSecAllocate;
+	}
+	SecStaticCodeRef code = NULL;
+	OSStatus status = SecStaticCodeCreateWithPath(url, kSecCSDefaultFlags, &code);
+	CFRelease(url);
+	if (status != errSecSuccess) {
+		return status;
+	}
+
+	CFErrorRef cfErr = NULL;
+	SecCSFlags flags = kSecCSDefaultFlags | kSecCSConsiderExpiration |
+		kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode;
+	status = SecStaticCodeCheckValidityWithErrors(code, flags, requirement, &cfErr);
+	CFRelease(code);
+
+	if (status != errSecSuccess && cfErr != NULL) {
+		if (outErrMsg != NULL) {
+			CFStringRef desc = CFErrorCopyDescription(cfErr);
+			if (desc != NULL) {
+				*outErrMsg = copyCFStringContents(desc);
+				CFRelease(desc);
+			}
+		}
+		CFRelease(cfErr);
+	}
+	return status;
+}
+
 // copySelfRequirementString returns this process's own designated code
 // signing requirement, as a newly allocated C string the caller must free,
 // or NULL if it could not be determined, e.g. the running binary is
@@ -155,6 +191,12 @@ import (
 // Requirement.Verify when the peer either cannot be identified, is no longer
 // running, or does not satisfy the given requirement.
 var ErrPeerCodeSignatureInvalid = errors.New("peer code signature is not valid or does not satisfy the requirement")
+
+// ErrFileCodeSignatureInvalid is returned by VerifyFileCodeSignature or
+// Requirement.VerifyFile when the code at the given path cannot be read, is
+// unsigned, has been modified since it was signed, or does not satisfy the
+// given requirement.
+var ErrFileCodeSignatureInvalid = errors.New("code signature of file is not valid or does not satisfy the requirement")
 
 // ErrInvalidRequirement is returned when a code signing requirement string
 // cannot be compiled, e.g. because of a syntax error or invalid encoding.
@@ -261,6 +303,41 @@ func (r *Requirement) Verify(conn *net.UnixConn) error {
 	return fmt.Errorf("%w: pid %d: OSStatus %d", ErrPeerCodeSignatureInvalid, pid, int(status))
 }
 
+// VerifyFile verifies that the code at path, an executable or a bundle, is
+// validly signed, unmodified on disk, and satisfies this requirement.
+//
+//nolint:gocritic // cgo pointer checks generate dupSubExpr in AST
+func (r *Requirement) VerifyFile(path string) error {
+	if path == "" {
+		return fmt.Errorf("%w: empty path", ErrFileCodeSignatureInvalid)
+	}
+	if r == nil || uintptr(r.req) == 0 {
+		return fmt.Errorf("%w: uninitialized requirement", ErrInvalidRequirement)
+	}
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	var cErrMsg *C.char
+	status := C.verifyStaticCode(cPath, r.req, &cErrMsg)
+	if status == C.errSecSuccess {
+		return nil
+	}
+
+	var errMsg string
+	if cErrMsg != nil {
+		errMsg = C.GoString(cErrMsg)
+		C.free(unsafe.Pointer(cErrMsg))
+	} else if msg := C.copySecErrorMessage(status); msg != nil {
+		errMsg = C.GoString(msg)
+		C.free(unsafe.Pointer(msg))
+	}
+
+	if errMsg != "" {
+		return fmt.Errorf("%w: %v: %s (OSStatus %d)", ErrFileCodeSignatureInvalid, path, errMsg, int(status))
+	}
+	return fmt.Errorf("%w: %v: OSStatus %d", ErrFileCodeSignatureInvalid, path, int(status))
+}
+
 // VerifyPeerCodeSignature verifies that the process connected via conn, a
 // Unix domain socket connection, is a currently valid, unmodified binary
 // satisfying requirement: a code signing requirement string in the language
@@ -293,6 +370,26 @@ func VerifyPeerCodeSignature(conn *net.UnixConn, requirement string) error {
 	}
 	defer req.Close()
 	return req.Verify(conn)
+}
+
+// VerifyFileCodeSignature verifies that the code at path, an executable or a
+// bundle, is validly signed, has not been modified since it was signed, and
+// satisfies requirement, a code signing requirement string as for
+// VerifyPeerCodeSignature. Code nested within a bundle is verified too.
+//
+// It is the check to make before executing a binary that must be trusted,
+// since checking the process once it is running, with
+// VerifyPeerCodeSignature, is too late to keep untrusted code from running.
+// The file can still be replaced between this check and its execution, so a
+// caller that can should also verify the running process, e.g. with
+// VerifyPeerCodeSignature over a socketpair shared with it.
+func VerifyFileCodeSignature(path, requirement string) error {
+	req, err := NewRequirement(requirement)
+	if err != nil {
+		return err
+	}
+	defer req.Close()
+	return req.VerifyFile(path)
 }
 
 // SelfRequirementString returns the running binary's own designated code

@@ -16,6 +16,12 @@ import (
 // running, or does not satisfy the given requirement.
 var ErrPeerCodeSignatureInvalid = errors.New("peer code signature is not valid or does not satisfy the requirement")
 
+// ErrFileCodeSignatureInvalid is returned by VerifyFileCodeSignature or
+// Requirement.VerifyFile when the code at the given path cannot be read, is
+// unsigned, has been modified since it was signed, or does not satisfy the
+// given requirement.
+var ErrFileCodeSignatureInvalid = errors.New("code signature of file is not valid or does not satisfy the requirement")
+
 // ErrInvalidRequirement is returned when a code signing requirement string
 // cannot be compiled, e.g. because of a syntax error or invalid encoding.
 var ErrInvalidRequirement = errors.New("invalid code signing requirement")
@@ -47,6 +53,16 @@ func (r *Requirement) String() string {
 
 // Verify returns an error when cgo is disabled.
 func (r *Requirement) Verify(_ *net.UnixConn) error {
+	return ErrCgoDisabled
+}
+
+// VerifyFile returns an error when cgo is disabled.
+func (r *Requirement) VerifyFile(_ string) error {
+	return ErrCgoDisabled
+}
+
+// VerifyFileCodeSignature returns an error when cgo is disabled.
+func VerifyFileCodeSignature(_, _ string) error {
 	return ErrCgoDisabled
 }
 
