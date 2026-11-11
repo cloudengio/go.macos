@@ -24,6 +24,7 @@ import (
 	"cloudeng.io/logging/ctxlog"
 	"cloudeng.io/os/executil"
 	"cloudeng.io/vms"
+	"cloudeng.io/vms/vmspool"
 )
 
 // Instance implements vms.Instance backed by the tart CLI.
@@ -97,7 +98,7 @@ type options struct {
 	logger           *slog.Logger
 	ipAtStart        bool
 	tartBinary       string
-	resources        ResourceConfig
+	resources        vmspool.VMResources
 }
 
 // WithStateBackoff sets the backoff to use when polling the state of the VM
@@ -165,9 +166,10 @@ func WithTartBinary(tartBinary string) Option {
 	}
 }
 
-// WithResources sets the resource configuration to apply to the tart VM
-// after it is cloned using 'tart set'.
-func WithResources(resources ResourceConfig) Option {
+// WithResources sets the resources to apply to the tart VM after it is cloned,
+// using 'tart set'. A resource left at zero is not set, so the VM keeps the
+// value its image was built with.
+func WithResources(resources vmspool.VMResources) Option {
 	return func(o *options) {
 		o.resources = resources
 	}
@@ -369,7 +371,7 @@ func convertError(args []string, stderr string, err error) error {
 func (inst *Instance) Clone(ctx context.Context) error {
 	inst.opMutex.Lock()
 	defer inst.opMutex.Unlock()
-	setResources := inst.opts.resources.configured()
+	setResources := resourcesConfigured(inst.opts.resources)
 	target := vms.StateStopped
 	if setResources {
 		// Stay in StateCloning until the resources have been set.
@@ -385,7 +387,7 @@ func (inst *Instance) Clone(ctx context.Context) error {
 	if !setResources {
 		return nil
 	}
-	args := append([]string{"set", inst.name}, inst.opts.resources.flags()...)
+	args := append([]string{"set", inst.name}, resourceFlags(inst.opts.resources)...)
 	if err := inst.runSyncExclusive(ctx,
 		vms.ActionNone,   // action: setting resources is not a state transition
 		vms.StateStopped, // intermediate state: the VM is stopped whilst its resources are set

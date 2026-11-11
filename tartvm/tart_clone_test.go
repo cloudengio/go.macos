@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"cloudeng.io/cmdutil/cmdtypes"
 	"cloudeng.io/vms"
+	"cloudeng.io/vms/vmspool"
 )
 
 // fakeTartFailingSubcommand puts a stub tart on PATH that succeeds for every
@@ -82,11 +82,11 @@ func fakeTartBlockingSubcommand(t *testing.T, blockSubcommand string) (wait, rel
 	return wait, release
 }
 
-func testResources() ResourceConfig {
-	return ResourceConfig{
-		Disk:   50 * cmdtypes.GB,
-		NumCPU: 4,
-		Mem:    8192 * cmdtypes.MiB,
+func testResources() vmspool.VMResources {
+	return vmspool.VMResources{
+		DiskGiB:  50,
+		NumCores: 4,
+		MemGiB:   8,
 	}
 }
 

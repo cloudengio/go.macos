@@ -10,11 +10,17 @@ macOS.
 ## Constants
 ### DefaultOutputBufferSize, DefaultTartBinary
 ```go
-DefaultOutputBufferSize = 16 * 1024 // 16KiB
-
-DefaultTartBinary = "tart"
-
+const (
+	DefaultOutputBufferSize = 16 * 1024 // 16KiB
+	DefaultTartBinary       = "tart"
+)
 ```
+
+### ProviderName
+```go
+const ProviderName = "tart"
+```
+ProviderName is the name a tart Provider reports, see Provider.Name.
 
 
 
@@ -62,18 +68,19 @@ budget of ~102 seconds.
 
 ### Func Pull
 ```go
-func Pull(ctx context.Context, tartBinary, image string, insecure bool, concurrency int) error
+func Pull(ctx context.Context, tartBinary string, ref ociimage.Reference, opts ociimage.PullOptions) error
 ```
-Pull fetches image into the local OCI cache with "tart pull", so that a
+Pull fetches ref into the local OCI cache with "tart pull", so that a
 subsequent clone uses the newly fetched copy rather than whatever was cached
 before. tartBinary may be empty, in which case DefaultTartBinary is used.
 
 Only a reference naming a registry can be pulled; a local image name has
-nothing to pull from, and tart reports that as an error.
+nothing to pull from, and tart reports that as an error. Use ociimage.Pull
+to skip such a reference rather than fail it.
 
 ### Func SetResources
 ```go
-func SetResources(ctx context.Context, tartBinary, image string, resources ResourceConfig) error
+func SetResources(ctx context.Context, tartBinary, image string, resources vmspool.VMResources) error
 ```
 SetResources updates the resource configuration of a tart VM image using
 "tart set".
@@ -317,10 +324,11 @@ on demand.
 
 
 ```go
-func WithResources(resources ResourceConfig) Option
+func WithResources(resources vmspool.VMResources) Option
 ```
-WithResources sets the resource configuration to apply to the tart VM after
-it is cloned using 'tart set'.
+WithResources sets the resources to apply to the tart VM after it is cloned,
+using 'tart set'. A resource left at zero is not set, so the VM keeps the
+value its image was built with.
 
 
 ```go
@@ -381,10 +389,29 @@ implements the remaining vmspool.Provider methods via the tart CLI.
 ### Methods
 
 ```go
+func (p *Provider) DefaultResources() vmspool.VMResources
+```
+DefaultResources implements vmspool.Provider, reporting the resources the
+Provider's VMs are created with, see WithProviderResources. As with the
+image, a Provider cannot discover them for itself, and a zero figure means
+unknown: tart keeps the image's own value for anything the clone did not
+set, and Get reports what a VM actually has once it exists.
+
+
+```go
 func (p *Provider) Delete(ctx context.Context, stopTimeout time.Duration) ([]string, error)
 ```
 Delete implements vmspool.Provider, stopping (if running) and deleting every
 VM the Provider manages. Deletion continues past individual failures.
+
+
+```go
+func (p *Provider) Details() vmspool.ProviderDetails
+```
+Details implements vmspool.Provider, reporting the image the Provider's VMs
+are cloned from, or the zero Reference if it was not configured with one:
+a Provider creates its VMs through a caller-supplied Constructor and so
+cannot discover the image for itself, see WithProviderImage.
 
 
 ```go
@@ -402,9 +429,25 @@ match the configured prefix.
 
 
 ```go
+func (p *Provider) Name() string
+```
+Name implements vmspool.Provider by naming the VM technology, which is what
+identifies the provider behind a VM in status output and in errors.
+
+
+```go
 func (p *Provider) New(ctx context.Context) (vms.Instance, error)
 ```
 New implements vmspool.Provider.
+
+
+```go
+func (p *Provider) Pull(ctx context.Context, ref ociimage.Reference, opts ociimage.PullOptions) error
+```
+Pull implements ociimage.Puller with the Provider's own tart binary, see
+WithProviderTartBinary. ref is pulled whatever the Provider's own image is:
+the Provider reports what its Constructor clones but does not run it, so the
+caller that owns the Constructor says what to pull, see WithProviderImage.
 
 
 
@@ -433,24 +476,30 @@ VMs.
 
 
 ```go
+func WithProviderImage(ref ociimage.Reference) ProviderOption
+```
+WithProviderImage records the image the Provider's Constructor clones its
+VMs from, which Details then reports and which Provider.Pull pulls. The
+Constructor owns the creation of a VM, so this is what it was told to clone,
+stated for anything reporting on the pool.
+
+
+```go
+func WithProviderResources(resources vmspool.VMResources) ProviderOption
+```
+WithProviderResources records the resources the Provider's Constructor
+creates its VMs with, which DefaultResources then reports, see WithResources
+for the option that applies them to a VM. Like WithProviderImage it only
+states what the Constructor was told to do.
+
+
+```go
 func WithProviderTartBinary(path string) ProviderOption
 ```
 WithProviderTartBinary sets the tart binary path to use for all Provider
 operations.
 
 
-
-
-### Type ResourceConfig
-```go
-type ResourceConfig struct {
-	Disk   cmdtypes.ByteSize `yaml:"disk"` // size of the VM's disk in GiB
-	NumCPU int               `yaml:"cpu"`  // number of CPU cores allocated to the VM
-	Mem    cmdtypes.ByteSize `yaml:"ram"`  // amount of RAM allocated to the VM in GiB
-}
-```
-ResourceConfig specifies the resources allocated to a tart VM, including
-disk size, number of CPU cores, and amount of RAM.
 
 
 
