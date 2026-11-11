@@ -24,6 +24,8 @@ cloudeng.io/security v0.0.0-20261111225710-e0ef01d9df9b h1:WCdlB6ZhrZED00M4iNWKC
 cloudeng.io/security v0.0.0-20261111225710-e0ef01d9df9b/go.mod h1:T0wViL/oDP2VRlxq0w2stWveMSjMJsWzIM+GKz9Tsus=
 cloudeng.io/sync v0.0.12-0.20260804222138-e9281ed260ba h1:2+U9tNRu/+O1rHgv2mxRTU80lgUCJSxDFDswbKumBx8=
 cloudeng.io/sync v0.0.12-0.20260804222138-e9281ed260ba/go.mod h1:35kcugrX/RVGQjSfyLMciOCloX34nFfnkQsdks75Ao0=
+cloudeng.io/sync v0.0.12-0.20261111225710-e0ef01d9df9b h1:BJetQD/aDpiW0z4moiUXA8IDHFSO6AioUkFpS5wOFf0=
+cloudeng.io/sync v0.0.12-0.20261111225710-e0ef01d9df9b/go.mod h1:OPhljfJZEGTRX5NpmWfijW/VBwzaqy4Wpt2ILV2NrPM=
 cloudeng.io/sys v0.0.0-20261111225710-e0ef01d9df9b h1:YQ7jcmcyyxhQ+W5u8AIp2L1GjDBq8ocLDLWPgTbeTEM=
 cloudeng.io/sys v0.0.0-20261111225710-e0ef01d9df9b/go.mod h1:zhfXn7rPBXaxpsWlmQ+Dish8DrMcVOocgXMNPS5BEQo=
 cloudeng.io/text v0.0.16-0.20260624171915-da98fe9dec2b h1:otn38p2Jnt/wSY3b4frIaXVFP9suUCTVIXd2gK1JZJY=

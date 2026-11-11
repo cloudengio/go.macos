@@ -25,7 +25,7 @@ require (
 )
 
 require (
-	cloudeng.io/sync v0.0.12-0.20260804222138-e9281ed260ba // indirect
+	cloudeng.io/sync v0.0.12-0.20261111225710-e0ef01d9df9b // indirect
 	cloudeng.io/sys v0.0.0-20261111225710-e0ef01d9df9b // indirect
 	cloudeng.io/types v0.0.0-20261111225710-e0ef01d9df9b // indirect
 	github.com/Microsoft/go-winio v0.6.4 // indirect
