@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"cloudeng.io/cmdutil/cmdtypes"
 	"cloudeng.io/errors"
 	"cloudeng.io/vms"
+	"cloudeng.io/vms/ociimage"
 	"cloudeng.io/vms/vmspool"
 )
 
@@ -32,12 +32,47 @@ type Constructor = func(ctx context.Context) (vms.Instance, error)
 // construction function.
 type Provider struct {
 	constructor Constructor
-	prefix      string // if set, only VMs whose name has this prefix are managed
-	pool        string // optional pool name used to tag VMInfo.Pool
-	tartBinary  string // optional tart binary path, defaults to "tart"
+	prefix      string              // if set, only VMs whose name has this prefix are managed
+	pool        string              // optional pool name used to tag VMInfo.Pool
+	tartBinary  string              // optional tart binary path, defaults to "tart"
+	image       ociimage.Reference  // optional image the constructor clones, reported by Details
+	resources   vmspool.VMResources // optional resources the constructor creates VMs with, reported by DefaultResources
 }
 
-var _ vmspool.Provider = (*Provider)(nil)
+var (
+	_ vmspool.Provider = (*Provider)(nil)
+	_ ociimage.Puller  = (*Provider)(nil)
+)
+
+// ProviderName is the name a tart Provider reports, see Provider.Name.
+const ProviderName = "tart"
+
+// Name implements vmspool.Provider by naming the VM technology, which is what
+// identifies the provider behind a VM in status output and in errors.
+func (p *Provider) Name() string { return ProviderName }
+
+// DefaultResources implements vmspool.Provider, reporting the resources the
+// Provider's VMs are created with, see WithProviderResources. As with the
+// image, a Provider cannot discover them for itself, and a zero figure means
+// unknown: tart keeps the image's own value for anything the clone did not set,
+// and Get reports what a VM actually has once it exists.
+func (p *Provider) DefaultResources() vmspool.VMResources { return p.resources }
+
+// providerDetails reports what a Provider's VMs are created from.
+type providerDetails struct {
+	image ociimage.Reference
+}
+
+// Image implements vmspool.ProviderDetails.
+func (d providerDetails) Image() ociimage.Reference { return d.image }
+
+// Details implements vmspool.Provider, reporting the image the Provider's VMs
+// are cloned from, or the zero Reference if it was not configured with one: a
+// Provider creates its VMs through a caller-supplied Constructor and so cannot
+// discover the image for itself, see WithProviderImage.
+func (p *Provider) Details() vmspool.ProviderDetails {
+	return providerDetails{image: p.image}
+}
 
 // ProviderOption configures a Provider.
 type ProviderOption func(*Provider)
@@ -52,6 +87,22 @@ func WithNamePrefix(prefix string) ProviderOption {
 // WithPoolName sets the pool name reported in VMInfo.Pool for the Provider's VMs.
 func WithPoolName(name string) ProviderOption {
 	return func(p *Provider) { p.pool = name }
+}
+
+// WithProviderImage records the image the Provider's Constructor clones its VMs
+// from, which Details then reports and which Provider.Pull pulls. The
+// Constructor owns the creation of a VM, so this is what it was told to clone,
+// stated for anything reporting on the pool.
+func WithProviderImage(ref ociimage.Reference) ProviderOption {
+	return func(p *Provider) { p.image = ref }
+}
+
+// WithProviderResources records the resources the Provider's Constructor
+// creates its VMs with, which DefaultResources then reports, see WithResources
+// for the option that applies them to a VM. Like WithProviderImage it only
+// states what the Constructor was told to do.
+func WithProviderResources(resources vmspool.VMResources) ProviderOption {
+	return func(p *Provider) { p.resources = resources }
 }
 
 // WithProviderTartBinary sets the tart binary path to use for all Provider operations.
@@ -128,13 +179,17 @@ func (p *Provider) Get(ctx context.Context, vmName string) (vmspool.VMDetail, er
 		return vmspool.VMDetail{}, fmt.Errorf("tart get %s: parse: %w", vmName, err)
 	}
 	return vmspool.VMDetail{
-		Name:     vmName,
-		Pool:     p.pool,
-		State:    g.State,
-		Running:  g.Running,
-		DiskGiB:  g.Disk,
-		NumCores: g.CPU,
-		MemGiB:   g.Memory / 1024,
+		VMInfo: vmspool.VMInfo{
+			Name:    vmName,
+			Pool:    p.pool,
+			State:   g.State,
+			Running: g.Running,
+		},
+		VMResources: vmspool.VMResources{
+			DiskGiB:  g.Disk,
+			NumCores: g.CPU,
+			MemGiB:   g.Memory / 1024,
+		},
 	}, nil
 }
 
@@ -169,33 +224,42 @@ func (p *Provider) Delete(ctx context.Context, stopTimeout time.Duration) ([]str
 	return deleted, errs.Err()
 }
 
-// Pull fetches image into the local OCI cache with "tart pull", so that a
+// Pull fetches ref into the local OCI cache with "tart pull", so that a
 // subsequent clone uses the newly fetched copy rather than whatever was cached
 // before. tartBinary may be empty, in which case DefaultTartBinary is used.
 //
 // Only a reference naming a registry can be pulled; a local image name has
-// nothing to pull from, and tart reports that as an error.
-func Pull(ctx context.Context, tartBinary, image string, insecure bool, concurrency int) error {
+// nothing to pull from, and tart reports that as an error. Use ociimage.Pull
+// to skip such a reference rather than fail it.
+func Pull(ctx context.Context, tartBinary string, ref ociimage.Reference, opts ociimage.PullOptions) error {
 	if tartBinary == "" {
 		tartBinary = DefaultTartBinary
 	}
-	args := []string{"pull", image}
-	if insecure {
+	args := []string{"pull", ref.String()}
+	if opts.Insecure {
 		args = append(args, "--insecure")
 	}
-	if concurrency > 0 {
-		args = append(args, "--concurrency", strconv.Itoa(concurrency))
+	if opts.Concurrency > 0 {
+		args = append(args, "--concurrency", strconv.Itoa(opts.Concurrency))
 	}
 	return runTart(ctx, tartBinary, args...)
 }
 
+// Pull implements ociimage.Puller with the Provider's own tart binary, see
+// WithProviderTartBinary. ref is pulled whatever the Provider's own image is:
+// the Provider reports what its Constructor clones but does not run it, so the
+// caller that owns the Constructor says what to pull, see WithProviderImage.
+func (p *Provider) Pull(ctx context.Context, ref ociimage.Reference, opts ociimage.PullOptions) error {
+	return Pull(ctx, p.tartBinary, ref, opts)
+}
+
 // SetResources updates the resource configuration of a tart VM image using "tart
 // set".
-func SetResources(ctx context.Context, tartBinary, image string, resources ResourceConfig) error {
+func SetResources(ctx context.Context, tartBinary, image string, resources vmspool.VMResources) error {
 	if tartBinary == "" {
 		tartBinary = DefaultTartBinary
 	}
-	args := append([]string{"set", image}, resources.flags()...)
+	args := append([]string{"set", image}, resourceFlags(resources)...)
 	return runTart(ctx, tartBinary, args...)
 }
 
@@ -215,28 +279,25 @@ func runTartOut(ctx context.Context, tartBinary string, args ...string) ([]byte,
 	return stdout.Bytes(), nil
 }
 
-// ResourceConfig specifies the resources allocated to a tart VM, including disk
-// size, number of CPU cores, and amount of RAM.
-type ResourceConfig struct {
-	Disk   cmdtypes.ByteSize `yaml:"disk"` // size of the VM's disk in GiB
-	NumCPU int               `yaml:"cpu"`  // number of CPU cores allocated to the VM
-	Mem    cmdtypes.ByteSize `yaml:"ram"`  // amount of RAM allocated to the VM in GiB
+// resourcesConfigured reports whether any resource was asked for, ie. whether
+// a clone needs a "tart set" at all.
+func resourcesConfigured(r vmspool.VMResources) bool {
+	return r.DiskGiB > 0 || r.NumCores > 0 || r.MemGiB > 0
 }
 
-func (r ResourceConfig) configured() bool {
-	return r.Disk > 0 || r.NumCPU > 0 || r.Mem > 0
-}
-
-func (r ResourceConfig) flags() []string {
+// resourceFlags renders r as the flags of "tart set", omitting whatever was
+// left at zero so that tart keeps the image's own value for it. tart takes the
+// disk size in GiB and the memory in MiB.
+func resourceFlags(r vmspool.VMResources) []string {
 	var opts []string
-	if r.Disk > 0 {
-		opts = append(opts, "--disk", strconv.Itoa(int(r.Disk/cmdtypes.GB)))
+	if r.DiskGiB > 0 {
+		opts = append(opts, "--disk", strconv.Itoa(r.DiskGiB))
 	}
-	if r.NumCPU > 0 {
-		opts = append(opts, "--cpu", strconv.Itoa(r.NumCPU))
+	if r.NumCores > 0 {
+		opts = append(opts, "--cpu", strconv.Itoa(r.NumCores))
 	}
-	if r.Mem > 0 {
-		opts = append(opts, "--memory", strconv.Itoa(int(r.Mem/cmdtypes.MiB)))
+	if r.MemGiB > 0 {
+		opts = append(opts, "--memory", strconv.Itoa(r.MemGiB*1024))
 	}
 	return opts
 }
