@@ -1,0 +1,34 @@
+--- Overview
+Updates tartvm to the revised vmspool/ociimage APIs. Tart resources now use the shared vmspool.VMResources type, image pulls take a parsed ociimage.Reference, and Provider gains the identity, details and pull methods the new vmspool.Provider and ociimage.Puller interfaces require.
+
+--- Key Changes
+tartvm/provider.go
+  * Adds ProviderName ("tart") and Provider.Name().
+  * Adds Provider.Details(), which reports the configured image, and Provider.DefaultResources(), which reports the configured resources.
+  * Adds the WithProviderImage(ociimage.Reference) and WithProviderResources(vmspool.VMResources) options. They only record what the Constructor was told to do.
+  * Provider now implements ociimage.Puller through Provider.Pull, using the Provider's configured tart binary.
+  * Pull now takes (ctx, tartBinary, ociimage.Reference, ociimage.PullOptions).
+  * SetResources now takes vmspool.VMResources. The ResourceConfig methods are replaced by the resourcesConfigured and resourceFlags helpers. Disk is passed in GiB; memory is converted from GiB to MiB.
+  * Get fills in the nested VMInfo and VMResources fields of vmspool.VMDetail.
+
+tartvm/tart.go
+  * WithResources and Instance options use vmspool.VMResources. A resource left at zero is not set, so the VM keeps the value from its image.
+
+Tests
+  * New tart_pull_test.go covers:
+    * the Pull command-line arguments (insecure, concurrency, digest);
+    * failure propagation;
+    * Provider as an ociimage.Puller, including skipping local references.
+  * Test fixtures and the test constructor are updated for the new vmspool.Provider methods and VMDetail layout.
+
+go.mod
+  * Bumps the cloudeng.io/* modules to 20261111225710-e0ef01d9df9b, plus the AWS SDK, smithy-go, x/sys and x/sync. Drops the indirect x/net.
+
+--- Breaking Changes
+  * tartvm.ResourceConfig is removed; use vmspool.VMResources. Its YAML tags (disk, cpu, ram) and cmdtypes.ByteSize units go with it, so memory can now only be set in whole GiB.
+  * These signatures changed:
+    * tartvm.Pull: from (ctx, tartBinary, image string, insecure bool, concurrency int) to (ctx, tartBinary string, ref ociimage.Reference, opts ociimage.PullOptions).
+    * tartvm.SetResources and tartvm.WithResources: now take vmspool.VMResources.
+  * Requires the updated cloudeng.io/vms module, which changes the vmspool.Provider interface (Name, Details, DefaultResources) and nests vmspool.VMDetail fields under VMInfo and VMResources.
+
+ Generated with Claude Code (https://claude.com/claude-code)
