@@ -1,0 +1,15 @@
+--- Overview
+cloudeng-keychain's bundle builder and gobundle now print which configuration files they loaded, so it is clear which env and YAML config shaped a build.
+
+--- Key Changes
+cmd/cloudeng-keychain
+  * loadPluginConfig now also returns the *cmdconfig.Located from gobundleconfig.Load.
+  * run prints the env and YAML config files it found (config files: ...) before it builds.
+
+cmd/gobundle
+  * Added printConfigFiles, which prints the env and YAML config files on one line and does nothing when loc is nil.
+  * -show-config now prints its file list through printConfigFiles. The output used to be two separate lines, parsed config files: and environment variables file:, and is now one combined line.
+  * The config files are also printed before go-run exec handling and before the main verb runs.
+
+--- Breaking Changes
+None. The output of gobundle -show-config has changed, though, so any script that reads its parsed config files: / environment variables file: lines will need updating.
