@@ -15,7 +15,7 @@ require (
 	cloudeng.io/os v0.0.0-20261112002641-3f0b5fb85a24
 	cloudeng.io/security v0.0.0-20261112002641-3f0b5fb85a24
 	cloudeng.io/text v0.0.16-0.20260624171915-da98fe9dec2b
-	cloudeng.io/vms v0.0.0-20261111225710-e0ef01d9df9b
+	cloudeng.io/vms v0.0.0-20261112230521-bb2e0354f2e1
 	github.com/aws/smithy-go v1.28.9
 	github.com/cloudengio/go-keychain v0.0.0-20261014235732-bd9bcf9f8cd6
 	github.com/cloudengio/keyctl v0.0.0-20251205212509-b187ca61e8c2

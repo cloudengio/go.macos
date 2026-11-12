@@ -363,6 +363,17 @@ WithTartBinary sets the path to the tart binary to use for running tart
 commands.
 
 
+```go
+func WithVerification(v ociimage.Verifier, policy ociimage.Policy) Option
+```
+WithVerification requires that the image that is cloned has a signature that
+satisfies policy, as verified by v, and clones the verified digest rather
+than the reference that was given: a tag could be moved between verifying
+it and cloning it. An image that is not signed, or not signed as the policy
+requires, is an error, as is a local image, which has no registry to hold a
+signature. Without this option nothing is verified.
+
+
 
 
 ### Type Provider
