@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -186,6 +187,8 @@ func WithResources(resources vmspool.VMResources) Option {
 // to hold a signature. Without this option nothing is verified.
 func WithVerification(v ociimage.Verifier, policy ociimage.Policy) Option {
 	return func(o *options) {
+		policy.Signers = slices.Clone(policy.Signers)
+		policy.Annotations = maps.Clone(policy.Annotations)
 		o.verifier, o.policy = v, &policy
 	}
 }
@@ -386,6 +389,9 @@ func convertError(args []string, stderr string, err error) error {
 func (inst *Instance) Clone(ctx context.Context) error {
 	inst.opMutex.Lock()
 	defer inst.opMutex.Unlock()
+	if s, allowed := inst.isActionAllowed(vms.ActionClone); !allowed {
+		return fmt.Errorf("action %s not allowed in state %s", vms.ActionClone, s)
+	}
 	source, err := ociimage.Pin(ctx, inst.opts.verifier, inst.opts.policy, inst.source)
 	if err != nil {
 		return fmt.Errorf("tart %s: verifying %s: %w", inst.name, inst.source, err)

@@ -32,6 +32,8 @@ cloudeng.io/types v0.0.0-20261112002641-3f0b5fb85a24 h1:cpGj69qHePakX9o93DbJK76r
 cloudeng.io/types v0.0.0-20261112002641-3f0b5fb85a24/go.mod h1:PWKCmFQwXGQKSeH6AlXwHfxUK227rTJs4FZKkMEACKE=
 cloudeng.io/vms v0.0.0-20261111225710-e0ef01d9df9b h1:6mnk2/BxZHnT+Fp3EQN9e3l+8vbNKP+sVVEDDGvnzdI=
 cloudeng.io/vms v0.0.0-20261111225710-e0ef01d9df9b/go.mod h1:9eK5dxcCrDZTw96kFsTBGeJODF9yXD8KCErrrqUA5xc=
+cloudeng.io/vms v0.0.0-20261112230521-bb2e0354f2e1 h1:VZM+U0sSs2NgfeVl/l83p6A3KY7XnXm35JOjXjgDvDs=
+cloudeng.io/vms v0.0.0-20261112230521-bb2e0354f2e1/go.mod h1:E3pXxF9McMpKlc6YaZUKRreE1C/okSz4q1F8bL58tq8=
 cloudeng.io/windows v0.0.0-20251203211350-c30caae1cc5e h1:88FLgbskFkcsZSgh3jncYqYBg1J2eLHGzmdp74APrCQ=
 cloudeng.io/windows v0.0.0-20251203211350-c30caae1cc5e/go.mod h1:tUOArMXLISe8OY+lHimWwdHMev5N7MwQGczQgTYZb3Y=
 github.com/Azure/go-ansiterm v0.0.0-20261006220739-8c912ac31dd4 h1:m2xcjRABtG288vnlV3U/PKh/HnPURxZp50RKNUwBxM8=

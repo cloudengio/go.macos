@@ -7,6 +7,7 @@ package tartvm
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"cloudeng.io/vms"
@@ -40,17 +41,16 @@ func TestCloneVerifies(t *testing.T) {
 	if err := inst.Clone(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := invocations(), []string{"clone ghcr.io/cirruslabs/ubuntu@" + verifiedDigest + " vm"}; len(got) != 1 || got[0] != want[0] {
-		t.Errorf("got %v, want %v", got, want)
+	if got, want := invocations(), []string{"clone ghcr.io/cirruslabs/ubuntu@" + verifiedDigest + " vm"}; len(got) != 1 || got[0] != want[0] || v.calls != 1 {
+		t.Errorf("got %v (calls=%d), want %v (calls=1)", got, v.calls, want)
 	}
 
 	invocations = fakeTart(t, "", "", 0)
-	v = &stubVerifier{}
 	inst = New(t.Context(), "ghcr.io/cirruslabs/ubuntu:latest", "vm")
 	if err := inst.Clone(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := invocations(), []string{"clone ghcr.io/cirruslabs/ubuntu:latest vm"}; got[0] != want[0] || v.calls != 0 {
+	if got, want := invocations(), []string{"clone ghcr.io/cirruslabs/ubuntu:latest vm"}; len(got) != 1 || got[0] != want[0] {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
@@ -66,20 +66,44 @@ func TestCloneVerificationFails(t *testing.T) {
 		"untrusted":   {"ghcr.io/cirruslabs/ubuntu:latest", ociimage.ErrNotVerified},
 		"local image": {"linux-ci", nil},
 	} {
-		invocations := fakeTart(t, "", "", 0)
-		inst := New(t.Context(), tc.source, "vm", WithVerification(&stubVerifier{err: tc.err}, verifyPolicy))
-		err := inst.Clone(t.Context())
-		if !errors.Is(err, ociimage.ErrNotVerified) {
-			t.Errorf("%v: got %v, want ErrNotVerified", name, err)
-		}
-		if tc.err != nil && !errors.Is(err, tc.err) {
-			t.Errorf("%v: the cause was lost: %v", name, err)
-		}
-		if got := invocations(); len(got) != 0 {
-			t.Errorf("%v: tart was run: %v", name, got)
-		}
-		if got := inst.State(t.Context()); got != vms.StateInitial {
-			t.Errorf("%v: state %v", name, got)
-		}
+		t.Run(name, func(t *testing.T) {
+			invocations := fakeTart(t, "", "", 0)
+			v := &stubVerifier{err: tc.err}
+			inst := New(t.Context(), tc.source, "vm", WithVerification(v, verifyPolicy))
+			err := inst.Clone(t.Context())
+			if !errors.Is(err, ociimage.ErrNotVerified) {
+				t.Errorf("got %v, want ErrNotVerified", err)
+			}
+			if tc.err != nil && !errors.Is(err, tc.err) {
+				t.Errorf("the cause was lost: %v", err)
+			}
+			if tc.err == nil && v.calls != 0 {
+				t.Errorf("verifier called %d times for local image, want 0", v.calls)
+			}
+			if got := invocations(); len(got) != 0 {
+				t.Errorf("tart was run: %v", got)
+			}
+			if got := inst.State(t.Context()); got != vms.StateInitial {
+				t.Errorf("state %v", got)
+			}
+		})
+	}
+}
+
+// TestCloneInvalidStateSkipsVerification checks that Clone rejects an invalid
+// state transition before calling the verifier.
+func TestCloneInvalidStateSkipsVerification(t *testing.T) {
+	fakeTart(t, "", "", 0)
+	v := &stubVerifier{}
+	inst := New(t.Context(), "ghcr.io/cirruslabs/ubuntu:latest", "vm", WithVerification(v, verifyPolicy))
+	if err := inst.Clone(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	err := inst.Clone(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "not allowed in state") {
+		t.Fatalf("got %v, want not allowed in state error", err)
+	}
+	if v.calls != 1 {
+		t.Errorf("verifier called %d times, want 1", v.calls)
 	}
 }
