@@ -31,6 +31,18 @@ func printf(format string, args ...any) {
 	}
 }
 
+func printConfigFiles(loc *cmdconfig.Located) {
+	if loc == nil {
+		return
+	}
+	var configFiles []string
+	configFiles = append(configFiles, loc.Env...)
+	configFiles = append(configFiles, loc.YAML...)
+	if len(configFiles) > 0 {
+		fmt.Printf("config files: %s\n", strings.Join(configFiles, ", "))
+	}
+}
+
 type localFlags struct {
 	Help              bool                `cmd:"help,false,show a help message"`
 	ShowConfigAndExit bool                `cmd:"show-config,false,show the configuration and exit"`
@@ -133,16 +145,14 @@ func main() {
 	}
 
 	if lf.ShowConfigAndExit {
-		fmt.Printf("parsed config files: %v\n", strings.Join(loc.YAML, ", "))
-		if len(loc.Env) > 0 {
-			fmt.Printf("environment variables file: %v\n", strings.Join(loc.Env, ", "))
-		}
+		printConfigFiles(loc)
 		_ = cmdyaml.WriteConfig(os.Stdout, &cfg)
 		return
 	}
 
 	if len(execBinary) > 0 {
 		runAndExit(func() error {
+			printConfigFiles(loc)
 			return handleGoRunExec(ctx, cfg, lf.Notarize, execBinary, execArgs)
 		})
 	}
@@ -152,6 +162,8 @@ func main() {
 		rungoExit(ctx)
 		return
 	}
+
+	printConfigFiles(loc)
 
 	cwd, _ := os.Getwd()
 	printf("verb: %v, current working directory: %s\n", goVerb, cwd)

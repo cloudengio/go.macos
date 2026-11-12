@@ -35,6 +35,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"cloudeng.io/cmdutil/cmdconfig"
 	"cloudeng.io/cmdutil/flags"
@@ -76,9 +77,15 @@ func main() {
 func run(out string, softlink, install, notarize, verbose bool) error {
 	ctx := context.Background()
 
-	cfg, err := loadPluginConfig(ctx, pluginConfigYML)
+	cfg, loc, err := loadPluginConfig(ctx, pluginConfigYML)
 	if err != nil {
 		return err
+	}
+	var configFiles []string
+	configFiles = append(configFiles, loc.Env...)
+	configFiles = append(configFiles, loc.YAML...)
+	if len(configFiles) > 0 {
+		fmt.Printf("config files: %s\n", strings.Join(configFiles, ", "))
 	}
 
 	// The nested plugin bundle keeps its own identifier from gobundle-app.yml; the
@@ -221,21 +228,21 @@ func buildBundle(ctx context.Context, out string, softlink, install bool, cfg go
 // shell does not define. Building the nested bundle from the same
 // configuration, resolved the same way, as building the plugin standalone
 // with gobundle is what keeps the two in step.
-func loadPluginConfig(ctx context.Context, path string) (gobundleconfig.T, error) {
+func loadPluginConfig(ctx context.Context, path string) (gobundleconfig.T, *cmdconfig.Located, error) {
 	// The plugin's own configuration is part of the repository, so being
 	// unable to find it means this is being run from the wrong directory
 	// rather than that it is absent; say so, rather than quietly building
 	// the bundle from the shared configuration alone.
 	if _, err := os.Stat(path); err != nil {
-		return gobundleconfig.T{}, fmt.Errorf("plugin configuration %v: %w", path, err)
+		return gobundleconfig.T{}, nil, fmt.Errorf("plugin configuration %v: %w", path, err)
 	}
 	var ff cmdconfig.FilesFlag
 	ff.SetDefaults(gobundleconfig.DefaultConfigFiles()[0], gobundleconfig.DefaultEnvConfigFile)
-	cfg, _, err := gobundleconfig.Load(ctx, &ff, path)
+	cfg, loc, err := gobundleconfig.Load(ctx, &ff, path)
 	if err != nil {
-		return gobundleconfig.T{}, fmt.Errorf("parsing %v: %w", path, err)
+		return gobundleconfig.T{}, nil, fmt.Errorf("parsing %v: %w", path, err)
 	}
-	return cfg, nil
+	return cfg, loc, nil
 }
 
 // build compiles the Go package pkg to a temporary file named executable,
