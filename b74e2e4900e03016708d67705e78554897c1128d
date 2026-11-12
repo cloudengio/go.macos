@@ -1,0 +1,16 @@
+--- Overview
+Adds optional image signature verification to tartvm, so a cloned image must carry a signature that satisfies a policy. When verification is on, Clone uses the verified digest instead of the reference it was given.
+
+--- Key Changes
+  * tartvm
+    * New WithVerification(v ociimage.Verifier, policy ociimage.Policy) Option. It copies the policy's Signers and Annotations so later changes by the caller have no effect.
+    * Clone now pins the source with ociimage.Pin before running tart clone, then clones repo@digest so a tag moved after verification can't change what is cloned.
+    * Clone fails, without running tart and with the instance left in its initial state, when the image is unsigned, doesn't match the policy, or is a local image (no registry to hold a signature).
+    * Clone checks that the clone action is allowed in the current state before calling the verifier.
+    * Without WithVerification, nothing is verified and cloning works as before.
+    * README documents the new option.
+  * Tests (tart_verify_test.go): cover cloning the verified digest, the default with no verification, unsigned, untrusted and local-image failures (original error kept, tart not run, state unchanged), and an invalid state transition that skips the verifier.
+  * go.mod: bumps cloudeng.io/vms to pick up ociimage.
+
+--- Breaking Changes
+None. The one behaviour change is that Clone now rejects an invalid state transition before starting any other work.
