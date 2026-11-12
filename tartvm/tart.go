@@ -24,6 +24,7 @@ import (
 	"cloudeng.io/logging/ctxlog"
 	"cloudeng.io/os/executil"
 	"cloudeng.io/vms"
+	"cloudeng.io/vms/ociimage"
 	"cloudeng.io/vms/vmspool"
 )
 
@@ -99,6 +100,8 @@ type options struct {
 	ipAtStart        bool
 	tartBinary       string
 	resources        vmspool.VMResources
+	verifier         ociimage.Verifier
+	policy           *ociimage.Policy
 }
 
 // WithStateBackoff sets the backoff to use when polling the state of the VM
@@ -172,6 +175,18 @@ func WithTartBinary(tartBinary string) Option {
 func WithResources(resources vmspool.VMResources) Option {
 	return func(o *options) {
 		o.resources = resources
+	}
+}
+
+// WithVerification requires that the image that is cloned has a signature
+// that satisfies policy, as verified by v, and clones the verified digest
+// rather than the reference that was given: a tag could be moved between
+// verifying it and cloning it. An image that is not signed, or not signed as
+// the policy requires, is an error, as is a local image, which has no registry
+// to hold a signature. Without this option nothing is verified.
+func WithVerification(v ociimage.Verifier, policy ociimage.Policy) Option {
+	return func(o *options) {
+		o.verifier, o.policy = v, &policy
 	}
 }
 
@@ -371,6 +386,10 @@ func convertError(args []string, stderr string, err error) error {
 func (inst *Instance) Clone(ctx context.Context) error {
 	inst.opMutex.Lock()
 	defer inst.opMutex.Unlock()
+	source, err := ociimage.Pin(ctx, inst.opts.verifier, inst.opts.policy, inst.source)
+	if err != nil {
+		return fmt.Errorf("tart %s: verifying %s: %w", inst.name, inst.source, err)
+	}
 	setResources := resourcesConfigured(inst.opts.resources)
 	target := vms.StateStopped
 	if setResources {
@@ -381,7 +400,7 @@ func (inst *Instance) Clone(ctx context.Context) error {
 		vms.ActionClone,  // action
 		vms.StateCloning, // intermediate state
 		target,           // target state
-		"clone", inst.source, inst.name); err != nil {
+		"clone", source, inst.name); err != nil {
 		return err
 	}
 	if !setResources {
