@@ -84,9 +84,9 @@ func fakeTartBlockingSubcommand(t *testing.T, blockSubcommand string) (wait, rel
 
 func testResources() vmspool.VMResources {
 	return vmspool.VMResources{
-		DiskGiB:  50,
-		NumCores: 4,
-		MemGiB:   8,
+		DiskGiB: 50,
+		Cores:   4,
+		MemGiB:  8,
 	}
 }
 
