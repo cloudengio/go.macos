@@ -68,7 +68,7 @@ budget of ~102 seconds.
 
 ### Func Pull
 ```go
-func Pull(ctx context.Context, tartBinary string, ref ociimage.Reference, opts ociimage.PullOptions) error
+func Pull(ctx context.Context, tartBinary string, ref ociimage.Reference, opts ...ociimage.PullOption) error
 ```
 Pull fetches ref into the local OCI cache with "tart pull", so that a
 subsequent clone uses the newly fetched copy rather than whatever was cached
@@ -453,7 +453,7 @@ New implements vmspool.Provider.
 
 
 ```go
-func (p *Provider) Pull(ctx context.Context, ref ociimage.Reference, opts ociimage.PullOptions) error
+func (p *Provider) Pull(ctx context.Context, ref ociimage.Reference, opts ...ociimage.PullOption) error
 ```
 Pull implements ociimage.Puller with the Provider's own tart binary, see
 WithProviderTartBinary. ref is pulled whatever the Provider's own image is:

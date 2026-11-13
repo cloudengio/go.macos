@@ -32,27 +32,42 @@ func TestPullArgs(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		ref  string
-		opts ociimage.PullOptions
+		opts []ociimage.PullOption
 		want string
 	}{
-		{"no options", "ghcr.io/cirruslabs/ubuntu:latest", ociimage.PullOptions{}, "pull ghcr.io/cirruslabs/ubuntu:latest"},
-		{"insecure", "mm-1:5001/linux-ci:latest", ociimage.PullOptions{Insecure: true}, "pull mm-1:5001/linux-ci:latest --insecure"},
-		{"concurrency", "mm-1:5001/linux-ci:latest", ociimage.PullOptions{Concurrency: 4}, "pull mm-1:5001/linux-ci:latest --concurrency 4"},
+		{"no options", "ghcr.io/cirruslabs/ubuntu:latest", nil, "pull ghcr.io/cirruslabs/ubuntu:latest"},
+		{
+			"insecure", "mm-1:5001/linux-ci:latest",
+			[]ociimage.PullOption{ociimage.WithPullInsecure(true)},
+			"pull mm-1:5001/linux-ci:latest --insecure",
+		},
+		{
+			"concurrency", "mm-1:5001/linux-ci:latest",
+			[]ociimage.PullOption{ociimage.WithPullConcurrency(4)},
+			"pull mm-1:5001/linux-ci:latest --concurrency 4",
+		},
 		{
 			"both", "mm-1:5001/linux-ci:latest",
-			ociimage.PullOptions{Insecure: true, Concurrency: 2},
+			[]ociimage.PullOption{ociimage.WithPullInsecure(true), ociimage.WithPullConcurrency(2)},
 			"pull mm-1:5001/linux-ci:latest --insecure --concurrency 2",
+		},
+		{
+			// An option that was not asked for leaves tart's own default in
+			// place, as does one asked for with the value it already has.
+			"defaults", "mm-1:5001/linux-ci:latest",
+			[]ociimage.PullOption{ociimage.WithPullInsecure(false), ociimage.WithPullConcurrency(0)},
+			"pull mm-1:5001/linux-ci:latest",
 		},
 		{
 			// A digest is part of the reference, so it is pulled with it.
 			"digest", "ghcr.io/cirruslabs/ubuntu@sha256:abc123",
-			ociimage.PullOptions{},
+			nil,
 			"pull ghcr.io/cirruslabs/ubuntu@sha256:abc123",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			invocations := fakeTart(t, "", "", 0)
-			if err := Pull(context.Background(), "", remoteRef(t, tc.ref), tc.opts); err != nil {
+			if err := Pull(context.Background(), "", remoteRef(t, tc.ref), tc.opts...); err != nil {
 				t.Fatalf("Pull: %v", err)
 			}
 			got := invocations()
@@ -71,7 +86,7 @@ func TestPullArgs(t *testing.T) {
 // creation of a VM instead of cloning a stale image.
 func TestPullFails(t *testing.T) {
 	invocations := fakeTart(t, "", "unauthorized", 1)
-	err := Pull(context.Background(), "", remoteRef(t, "ghcr.io/cirruslabs/ubuntu:latest"), ociimage.PullOptions{})
+	err := Pull(context.Background(), "", remoteRef(t, "ghcr.io/cirruslabs/ubuntu:latest"))
 	if err == nil {
 		t.Fatal("Pull: got nil error, want the stub's failure")
 	}
@@ -88,7 +103,7 @@ func TestProviderPull(t *testing.T) {
 
 	ctx := context.Background()
 	ref := remoteRef(t, "ghcr.io/cirruslabs/ubuntu:latest")
-	opts := ociimage.PullOptions{Insecure: true}
+	opts := ociimage.WithPullInsecure(true)
 
 	invocations := fakeTart(t, "", "", 0)
 	p := NewProvider(nil, WithProviderImage(ref))
