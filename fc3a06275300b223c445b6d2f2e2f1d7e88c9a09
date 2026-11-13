@@ -1,0 +1,12 @@
+--- Overview
+Updates tartvm to use the field name vmspool.VMResources.Cores, which replaces NumCores.
+
+--- Key Changes
+  * tartvm/provider.go
+    * Provider.Get now fills in Cores from the VM's CPU value.
+    * resourcesConfigured and resourceFlags now read Cores when deciding on the --cpu flag for tart set and rendering it.
+  * tartvm/tart_clone_test.go
+    * testResources now sets Cores.
+
+--- Breaking Changes
+None in tartvm. The breaking change is the NumCores -> Cores rename in vmspool.VMResources, and this PR keeps tartvm building against it.
