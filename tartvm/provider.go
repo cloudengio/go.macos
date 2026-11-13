@@ -186,9 +186,9 @@ func (p *Provider) Get(ctx context.Context, vmName string) (vmspool.VMDetail, er
 			Running: g.Running,
 		},
 		VMResources: vmspool.VMResources{
-			DiskGiB:  g.Disk,
-			NumCores: g.CPU,
-			MemGiB:   g.Memory / 1024,
+			DiskGiB: g.Disk,
+			Cores:   g.CPU,
+			MemGiB:  g.Memory / 1024,
 		},
 	}, nil
 }
@@ -282,7 +282,7 @@ func runTartOut(ctx context.Context, tartBinary string, args ...string) ([]byte,
 // resourcesConfigured reports whether any resource was asked for, ie. whether
 // a clone needs a "tart set" at all.
 func resourcesConfigured(r vmspool.VMResources) bool {
-	return r.DiskGiB > 0 || r.NumCores > 0 || r.MemGiB > 0
+	return r.DiskGiB > 0 || r.Cores > 0 || r.MemGiB > 0
 }
 
 // resourceFlags renders r as the flags of "tart set", omitting whatever was
@@ -293,8 +293,8 @@ func resourceFlags(r vmspool.VMResources) []string {
 	if r.DiskGiB > 0 {
 		opts = append(opts, "--disk", strconv.Itoa(r.DiskGiB))
 	}
-	if r.NumCores > 0 {
-		opts = append(opts, "--cpu", strconv.Itoa(r.NumCores))
+	if r.Cores > 0 {
+		opts = append(opts, "--cpu", strconv.Itoa(r.Cores))
 	}
 	if r.MemGiB > 0 {
 		opts = append(opts, "--memory", strconv.Itoa(r.MemGiB*1024))
