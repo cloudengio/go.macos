@@ -231,16 +231,17 @@ func (p *Provider) Delete(ctx context.Context, stopTimeout time.Duration) ([]str
 // Only a reference naming a registry can be pulled; a local image name has
 // nothing to pull from, and tart reports that as an error. Use ociimage.Pull
 // to skip such a reference rather than fail it.
-func Pull(ctx context.Context, tartBinary string, ref ociimage.Reference, opts ociimage.PullOptions) error {
+func Pull(ctx context.Context, tartBinary string, ref ociimage.Reference, opts ...ociimage.PullOption) error {
 	if tartBinary == "" {
 		tartBinary = DefaultTartBinary
 	}
+	o := ociimage.ResolvePullOptions(opts...)
 	args := []string{"pull", ref.String()}
-	if opts.Insecure {
+	if o.Insecure {
 		args = append(args, "--insecure")
 	}
-	if opts.Concurrency > 0 {
-		args = append(args, "--concurrency", strconv.Itoa(opts.Concurrency))
+	if o.Concurrency > 0 {
+		args = append(args, "--concurrency", strconv.Itoa(o.Concurrency))
 	}
 	return runTart(ctx, tartBinary, args...)
 }
@@ -249,8 +250,8 @@ func Pull(ctx context.Context, tartBinary string, ref ociimage.Reference, opts o
 // WithProviderTartBinary. ref is pulled whatever the Provider's own image is:
 // the Provider reports what its Constructor clones but does not run it, so the
 // caller that owns the Constructor says what to pull, see WithProviderImage.
-func (p *Provider) Pull(ctx context.Context, ref ociimage.Reference, opts ociimage.PullOptions) error {
-	return Pull(ctx, p.tartBinary, ref, opts)
+func (p *Provider) Pull(ctx context.Context, ref ociimage.Reference, opts ...ociimage.PullOption) error {
+	return Pull(ctx, p.tartBinary, ref, opts...)
 }
 
 // SetResources updates the resource configuration of a tart VM image using "tart
