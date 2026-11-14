@@ -1,0 +1,17 @@
+--- Overview
+Moves tartvm's pull API from the ociimage.PullOptions struct to the variadic functional options (ociimage.PullOption) that the updated cloudeng.io/vms dependency now provides.
+
+--- Key Changes
+  * go.mod
+    * Bumps cloudeng.io/vms to v0.0.0-20261113223917-0169958b35e4.
+  * tartvm
+    * Pull and (*Provider).Pull now take opts ...ociimage.PullOption and resolve them with ociimage.ResolvePullOptions.
+    * --insecure and --concurrency are still only passed to tart when set to a non-default value.
+    * README signatures now match the new API.
+  * tests
+    * TestPullArgs builds its options with WithPullInsecure and WithPullConcurrency.
+    * A new defaults case checks that options set to their zero values add no flags.
+    * TestPullFails and TestProviderPull now use the variadic form.
+
+--- Breaking Changes
+  * tartvm.Pull and (*tartvm.Provider).Pull no longer accept an ociimage.PullOptions struct. Callers must pass ociimage.PullOption values instead (e.g. ociimage.WithPullInsecure(true)), or pass none.
